@@ -6,3 +6,5 @@
 @media(max-width:700px){.site-header .brand-app-icon{height:42px;width:42px;border-radius:11px}.site-header .brand{font-size:19px}.brand-footer .brand-app-icon{height:42px;width:42px;border-radius:11px}.brand-footer{font-size:20px}}
 .store-icon{grid-row:1/3;width:25px;height:31px;align-self:center;justify-self:center;display:block}
 .store-actions .app-store-link{display:block;background:transparent;padding:0;border-radius:0;line-height:0}.store-actions .app-store-link:hover{transform:translateY(-2px)}.app-store-badge{display:block;width:190px;max-width:100%;height:auto}
+footer>div{gap:17px}footer>div a{display:inline-flex;align-items:center;min-height:44px;padding:0 4px}
+@media(max-width:700px){.site-header .brand-app-icon,.brand-footer .brand-app-icon{height:44px;width:44px}}
