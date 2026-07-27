@@ -17,11 +17,11 @@
 .provider-button-slot>div,.provider-button-slot iframe{display:block!important;width:100%!important;max-width:100%!important}
 .apple-provider-mark{background:#fff;color:#111;border-color:#d7d7d7}
 .apple-provider-mark svg{width:19px;height:19px;display:block;fill:#111}
-.social-auth-button[data-social-provider="apple"]{height:48px;background:#202124;color:#fff;border:1px solid #3c4043;border-radius:13px;box-shadow:none}
-.social-auth-button[data-social-provider="apple"] .apple-provider-mark{background:transparent;color:#fff;border:0}
-.social-auth-button[data-social-provider="apple"] .apple-provider-mark svg{width:19px;height:19px;fill:#fff}
-.social-auth-button[data-social-provider="apple"] strong{font-size:13px;font-weight:700}
-.social-auth-button[data-social-provider="apple"]>b{color:#fff}
+.social-auth-button[data-social-provider="apple"]{height:48px;padding:4px;background:#202124;color:#fff;border:1px solid #3c4043;border-radius:13px;box-shadow:none;grid-template-columns:40px 1fr 40px}
+.social-auth-button[data-social-provider="apple"] .apple-provider-mark{width:36px;height:36px;justify-self:start;background:#fff;color:#111;border:0;border-radius:0}
+.social-auth-button[data-social-provider="apple"] .apple-provider-mark svg{width:18px;height:18px;fill:#111}
+.social-auth-button[data-social-provider="apple"] strong{font-size:14px;font-weight:500;text-align:center}
+.social-auth-button[data-social-provider="apple"]>b{visibility:hidden}
 .mode-soon{min-height:70px;background:#15171a;border-color:#49412a}
 .mode-soon .mode-icon{background:rgba(255,191,0,.1);color:var(--gold)}
 .mode-soon>b{background:#282a2f;color:var(--gold)}
