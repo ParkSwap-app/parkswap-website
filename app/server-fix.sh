@@ -36,6 +36,7 @@ NGINX
 
 python3 - "$nginx_config" <<'PY'
 from pathlib import Path
+import re
 import sys
 
 path = Path(sys.argv[1])
@@ -44,10 +45,10 @@ text = text.replace("server_name parkswap.com;", "server_name parkswap.com old.p
 text = text.replace("/etc/letsencrypt/live/parkswap.com", "/etc/letsencrypt/live/old.parkswap.com")
 include = "\tinclude /etc/nginx/snippets/parkswap-api.conf;\n\n"
 if include.strip() not in text:
-    marker = "\tlocation / {"
-    if marker not in text:
+    pattern = r"(?m)^(\s*)location / \{"
+    if not re.search(pattern, text):
         raise SystemExit("Could not find the ParkSwap HTTPS location block")
-    text = text.replace(marker, include + marker, 1)
+    text = re.sub(pattern, lambda match: match.group(1) + include.lstrip("\t") + match.group(0), text, count=1)
 path.write_text(text)
 PY
 
