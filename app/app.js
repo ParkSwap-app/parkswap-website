@@ -1,5 +1,5 @@
 (() => {
-  const API = "/api";
+  const API = "https://old.parkswap.com/api";
   const state = {
     token: localStorage.getItem("parkswap_token") || "",
     user: safeParse(localStorage.getItem("parkswap_user")) || null,
