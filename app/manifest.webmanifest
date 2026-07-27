@@ -1,0 +1,15 @@
+{
+  "name": "ParkSwap",
+  "short_name": "ParkSwap",
+  "description": "Live, driver-powered street parking activity.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#090a0c",
+  "theme_color": "#090a0c",
+  "categories": ["navigation", "travel", "utilities"],
+  "icons": [
+    {"src": "../parkswap-app-icon.png", "sizes": "400x400", "type": "image/png", "purpose": "any maskable"}
+  ]
+}
