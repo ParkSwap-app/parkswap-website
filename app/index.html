@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+  <meta name="theme-color" content="#090a0c">
+  <meta name="description" content="Find and share live street-parking activity with ParkSwap.">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="ParkSwap">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="../parkswap-app-icon.png">
+  <link rel="icon" href="../parkswap-app-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIINfQ3ynHTcKeHPtJdYjMZVx0BJsP+CTKk=" crossorigin="">
+  <link rel="stylesheet" href="app.css">
+  <title>ParkSwap</title>
+</head>
+<body>
+  <div id="app" class="app-shell">
+    <section id="authView" class="auth-view">
+      <div class="auth-orbit orbit-one"></div><div class="auth-orbit orbit-two"></div>
+      <div class="auth-brand"><img src="../parkswap-app-icon.png" alt="ParkSwap"><span>ParkSwap</span></div>
+      <div class="auth-copy">
+        <p class="eyebrow">Driver-powered parking</p>
+        <h1>Less circling.<br><em>More arriving.</em></h1>
+        <p>Find live parking activity or help another driver when you leave a spot.</p>
+      </div>
+      <div class="auth-card">
+        <div class="segmented" role="tablist" aria-label="Account action">
+          <button class="segment active" data-auth-tab="login" role="tab" aria-selected="true">Sign in</button>
+          <button class="segment" data-auth-tab="signup" role="tab" aria-selected="false">Create account</button>
+        </div>
+        <form id="loginForm" class="auth-form">
+          <label>Email<input name="email" type="email" autocomplete="email" required placeholder="you@example.com"></label>
+          <label>Password<input name="password" type="password" autocomplete="current-password" required placeholder="Your password"></label>
+          <button class="primary-button" type="submit"><span>Sign in</span><b>→</b></button>
+        </form>
+        <form id="signupForm" class="auth-form hidden">
+          <label>Email<input name="email" type="email" autocomplete="email" required placeholder="you@example.com"></label>
+          <label>Password<input name="password" type="password" autocomplete="new-password" minlength="6" required placeholder="At least 6 characters"></label>
+          <label>Confirm password<input name="confirm_password" type="password" autocomplete="new-password" minlength="6" required placeholder="Repeat password"></label>
+          <button class="primary-button" type="submit"><span>Create free account</span><b>→</b></button>
+          <small>Core parking features are free. No card required.</small>
+        </form>
+        <p id="authMessage" class="form-message" role="status"></p>
+      </div>
+      <p class="legal-copy">By continuing, you agree to ParkSwap's <a href="../terms/">Terms</a> and <a href="../privacy/">Privacy Policy</a>.</p>
+    </section>
+
+    <section id="mainView" class="main-view hidden">
+      <header class="app-header">
+        <a class="app-brand" href="./"><img src="../parkswap-app-icon.png" alt=""><span>ParkSwap</span></a>
+        <div class="header-actions">
+          <button id="installButton" class="icon-button install-button hidden" aria-label="Install ParkSwap">↓</button>
+          <button id="alertsButton" class="icon-button" aria-label="View activity alerts">●<span id="alertBadge" class="alert-badge hidden">0</span></button>
+        </div>
+      </header>
+
+      <main>
+        <section id="mapPanel" class="panel active-panel">
+          <div class="map-wrap">
+            <div id="map" aria-label="Nearby parking activity map"></div>
+            <div class="map-shade"></div>
+            <button id="recenterButton" class="recenter-button" aria-label="Center map on my location">⌖</button>
+            <div class="map-status"><i></i><span id="locationStatus">Finding your location…</span></div>
+          </div>
+
+          <div class="action-sheet">
+            <div class="sheet-handle"></div>
+            <div class="action-heading">
+              <div><p class="eyebrow">What are you doing?</p><h2>Parking, made simpler.</h2></div>
+              <span id="nearbyCount" class="count-pill">0 nearby</span>
+            </div>
+            <div class="mode-grid">
+              <button id="lookButton" class="mode-card mode-look">
+                <span class="mode-icon">⌖</span><span><strong>Find parking</strong><small>See drivers leaving nearby</small></span><b>→</b>
+              </button>
+              <button id="leaveButton" class="mode-card mode-leave">
+                <span class="mode-icon">P</span><span><strong>Leave Spot Now</strong><small>Share your spot safely</small></span><b>→</b>
+              </button>
+            </div>
+            <button id="stopButton" class="stop-button hidden">Stop sharing or searching</button>
+            <div id="activeMode" class="active-mode hidden" role="status"></div>
+            <p class="safety-note"><span>!</span> Use ParkSwap only while safely parked. Availability is never guaranteed.</p>
+          </div>
+        </section>
+
+        <section id="activityPanel" class="panel">
+          <div class="page-heading"><p class="eyebrow">Nearby now</p><h2>Parking activity</h2><p>Live driver-shared opportunities near your current location.</p></div>
+          <div id="activityList" class="activity-list"><div class="empty-state"><span>⌖</span><h3>No nearby activity yet</h3><p>Start looking and ParkSwap will refresh automatically.</p></div></div>
+        </section>
+
+        <section id="accountPanel" class="panel">
+          <div class="profile-hero"><img src="../parkswap-app-icon.png" alt=""><div><p class="eyebrow">Your ParkSwap</p><h2 id="profileName">Driver</h2><p id="profileEmail"></p></div></div>
+          <div class="account-card">
+            <div><span>Account</span><strong>Free core access</strong></div>
+            <div><span>Notifications</span><button id="enableNotifications">Enable</button></div>
+            <div><span>Install on this phone</span><button id="installFromProfile">Install</button></div>
+          </div>
+          <div class="account-card vehicle-card">
+            <div class="card-title"><span>Vehicle</span><button id="editVehicleButton">Edit</button></div>
+            <p id="vehicleSummary">Add your vehicle so another driver can recognize you during a handoff.</p>
+          </div>
+          <a class="account-link" href="../privacy/">Privacy &amp; safety <span>→</span></a>
+          <a class="account-link" href="../terms/">Terms of use <span>→</span></a>
+          <button id="signOutButton" class="signout-button">Sign out</button>
+        </section>
+      </main>
+
+      <nav class="bottom-nav" aria-label="App navigation">
+        <button class="nav-item active" data-panel="mapPanel"><span>⌖</span><small>Map</small></button>
+        <button class="nav-item" data-panel="activityPanel"><span>≋</span><small>Activity</small></button>
+        <button class="nav-item" data-panel="accountPanel"><span>○</span><small>Profile</small></button>
+      </nav>
+    </section>
+  </div>
+
+  <div id="vehicleModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="vehicleTitle">
+    <div class="modal-backdrop" data-close-modal></div>
+    <div class="modal-card">
+      <button class="modal-close" data-close-modal aria-label="Close">×</button>
+      <p class="eyebrow">Vehicle details</p><h2 id="vehicleTitle">Help drivers recognize you.</h2>
+      <form id="vehicleForm" class="auth-form two-column">
+        <label>Make<input name="make" required placeholder="Honda"></label>
+        <label>Model<input name="model" required placeholder="Civic"></label>
+        <label>Color<input name="color" required placeholder="Black"></label>
+        <label>Plate number<input name="plate_number" required maxlength="20" placeholder="ABC1234"></label>
+        <button class="primary-button full" type="submit"><span>Save vehicle</span><b>→</b></button>
+      </form>
+      <p id="vehicleMessage" class="form-message" role="status"></p>
+    </div>
+  </div>
+
+  <div id="spotModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="spotTitle">
+    <div class="modal-backdrop" data-close-modal></div>
+    <div class="modal-card spot-card">
+      <button class="modal-close" data-close-modal aria-label="Close">×</button>
+      <span class="live-label"><i></i> Available now</span>
+      <h2 id="spotTitle">Driver leaving nearby</h2>
+      <p id="spotAddress">Current area</p>
+      <div class="spot-meta"><span><b id="spotDistance">Nearby</b><small>Distance</small></span><span><b id="spotUpdated">Live</b><small>Updated</small></span></div>
+      <button id="claimButton" class="primary-button"><span>I'm heading there</span><b>→</b></button>
+      <a id="directionsButton" class="directions-button" target="_blank" rel="noopener">Preview directions</a>
+      <p class="safety-note"><span>!</span> This is community information, not ownership or a guaranteed space.</p>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden" role="status"></div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="app.js" defer></script>
+</body>
+</html>
