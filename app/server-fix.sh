@@ -5,11 +5,17 @@ nginx_config=/etc/nginx/sites-enabled/default
 snippet=/etc/nginx/snippets/parkswap-api.conf
 stamp=$(date +%Y%m%d-%H%M%S)
 backup_dir=/var/backups/parkswap-api-routing-$stamp
+php_socket=$(find /run/php -maxdepth 1 -type s -name 'php*-fpm.sock' | sort -V | tail -n 1)
+
+if [ -z "$php_socket" ]; then
+    echo "No active PHP-FPM socket was found" >&2
+    exit 1
+fi
 
 mkdir -p "$backup_dir"
 cp "$nginx_config" "$backup_dir/default"
 
-cat > "$snippet" <<'NGINX'
+cat > "$snippet" <<NGINX
 location ^~ /api/ {
     if ($request_method = OPTIONS) {
         add_header Access-Control-Allow-Origin "https://parkswap.com" always;
@@ -25,7 +31,7 @@ location ^~ /api/ {
     fastcgi_param PATH_INFO $uri;
     fastcgi_param REQUEST_URI $request_uri;
     fastcgi_param HTTP_HOST $host;
-    fastcgi_pass unix:/run/php/php7.4-fpm.sock;
+    fastcgi_pass unix:$php_socket;
 
     add_header Access-Control-Allow-Origin "https://parkswap.com" always;
     add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
