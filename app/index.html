@@ -45,6 +45,23 @@
           <button class="primary-button" type="submit"><span>Create free account</span><b>→</b></button>
           <small>Core parking features are free. No card required.</small>
         </form>
+        <div id="socialAccess" class="social-access">
+          <div class="auth-divider"><span>or use your existing account</span></div>
+          <div id="googleIdentityButton" class="provider-button-slot hidden" aria-label="Continue with Google"></div>
+          <button id="googleRecoveryButton" class="social-auth-button" type="button" data-social-recovery="Google">
+            <span class="provider-mark google-mark" aria-hidden="true">G</span><strong>Continue with Google</strong><b>→</b>
+          </button>
+          <button id="appleIdentityButton" class="social-auth-button" type="button" data-social-provider="apple" data-social-recovery="Apple">
+            <span class="provider-mark apple-provider-mark" aria-hidden="true">●</span><strong>Continue with Apple</strong><b>→</b>
+          </button>
+        </div>
+        <form id="socialRecoveryForm" class="auth-form social-recovery hidden">
+          <div class="recovery-heading"><span id="recoveryProviderMark" class="provider-mark">G</span><div><strong id="recoveryTitle">Google account access</strong><small>Secure fallback for an existing ParkSwap account.</small></div></div>
+          <label>Account email<input id="socialRecoveryEmail" name="email" type="email" autocomplete="email" required placeholder="you@example.com"></label>
+          <button class="primary-button" type="submit"><span>Email my secure web password</span><b>→</b></button>
+          <button id="cancelSocialRecovery" class="text-button" type="button">Back to sign in</button>
+          <small>Your existing profile, parking history, and account stay together.</small>
+        </form>
         <p id="authMessage" class="form-message" role="status"></p>
       </div>
       <p class="legal-copy">By continuing, you agree to ParkSwap's <a href="../terms/">Terms</a> and <a href="../privacy/">Privacy Policy</a>.</p>

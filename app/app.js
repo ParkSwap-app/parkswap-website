@@ -13,6 +13,9 @@
     spotMarkers: [],
     installPrompt: null,
     refreshTimer: null,
+    socialConfig: null,
+    googleNonce: "",
+    socialBusy: false,
   };
 
   const $ = (id) => document.getElementById(id);
@@ -82,6 +85,61 @@
     if (showToast) toast("Signed out safely.");
   }
 
+  function randomNonce() {
+    const bytes = new Uint8Array(24);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+  }
+  function loadScript(src, id) {
+    return new Promise((resolve, reject) => {
+      const existing = document.getElementById(id);
+      if (existing) { if (existing.dataset.ready === "true") resolve(); else existing.addEventListener("load", resolve, { once: true }); return; }
+      const script = document.createElement("script");
+      script.id = id; script.src = src; script.async = true; script.defer = true;
+      script.addEventListener("load", () => { script.dataset.ready = "true"; resolve(); }, { once: true });
+      script.addEventListener("error", () => reject(new Error("The identity provider could not load.")), { once: true });
+      document.head.appendChild(script);
+    });
+  }
+  async function finishSocialIdentity(provider, idToken, nonce) {
+    if (state.socialBusy) return;
+    state.socialBusy = true; message(authMessage, `Finishing ${provider === "google" ? "Google" : "Apple"} sign-in…`, true);
+    try {
+      const payload = await api("/v1/auth/social-identity", { method: "POST", data: {
+        provider, id_token: idToken, nonce, device_token: `web-${deviceId()}`,
+      }, auth: false });
+      saveSession(payload);
+      await enterApp();
+      if (payload?.data?.is_new_user) openVehicleModal();
+    } catch (error) { message(authMessage, error.message); }
+    finally { state.socialBusy = false; }
+  }
+  async function initializeSocialIdentity() {
+    try {
+      const payload = await api("/v1/auth/social-config", { auth: false });
+      state.socialConfig = payload?.data || {};
+      if (state.socialConfig.google?.enabled && state.socialConfig.google.client_id) {
+        await loadScript("https://accounts.google.com/gsi/client", "google-identity-services");
+        state.googleNonce = randomNonce();
+        window.google.accounts.id.initialize({
+          client_id: state.socialConfig.google.client_id,
+          nonce: state.googleNonce,
+          cancel_on_tap_outside: true,
+          callback: (response) => finishSocialIdentity("google", response.credential, state.googleNonce),
+        });
+        const slot = $("googleIdentityButton");
+        slot.classList.remove("hidden"); $("googleRecoveryButton").classList.add("hidden");
+        window.google.accounts.id.renderButton(slot, { type: "standard", theme: "filled_black", size: "large", shape: "rectangular", text: "continue_with", width: Math.min(440, Math.max(250, slot.clientWidth || 320)) });
+      }
+      if (state.socialConfig.apple?.enabled && state.socialConfig.apple.client_id) {
+        await loadScript("https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js", "apple-signin-sdk");
+        $("appleIdentityButton").dataset.socialReady = "true";
+      }
+    } catch {
+      // Password recovery remains available when provider configuration is unavailable.
+    }
+  }
+
   document.querySelectorAll("[data-auth-tab]").forEach((button) => button.addEventListener("click", () => {
     document.querySelectorAll("[data-auth-tab]").forEach((item) => { item.classList.toggle("active", item === button); item.setAttribute("aria-selected", item === button ? "true" : "false"); });
     $("loginForm").classList.toggle("hidden", button.dataset.authTab !== "login");
@@ -105,6 +163,64 @@
     catch (error) { message(authMessage, error.message); }
     finally { setBusy(button, false); }
   });
+
+  function restoreStandardAuth() {
+    $("socialRecoveryForm").classList.add("hidden");
+    $("socialAccess").classList.remove("hidden");
+    const activeTab = document.querySelector("[data-auth-tab].active")?.dataset.authTab || "login";
+    $("loginForm").classList.toggle("hidden", activeTab !== "login");
+    $("signupForm").classList.toggle("hidden", activeTab !== "signup");
+  }
+  document.querySelectorAll("[data-social-recovery]").forEach((button) => button.addEventListener("click", () => {
+    const provider = button.dataset.socialRecovery;
+    if (provider === "Apple" && button.dataset.socialReady === "true") return;
+    const existingEmail = $("loginForm").elements.email.value || $("signupForm").elements.email.value || "";
+    $("loginForm").classList.add("hidden");
+    $("signupForm").classList.add("hidden");
+    $("socialAccess").classList.add("hidden");
+    $("socialRecoveryForm").classList.remove("hidden");
+    $("recoveryTitle").textContent = `${provider} account access`;
+    $("recoveryProviderMark").textContent = provider === "Google" ? "G" : "●";
+    $("recoveryProviderMark").className = `provider-mark ${provider === "Google" ? "google-mark" : "apple-provider-mark"}`;
+    $("socialRecoveryEmail").value = existingEmail;
+    $("socialRecoveryEmail").focus();
+    message(authMessage, "We’ll email a temporary password for this existing ParkSwap account.", true);
+  }));
+  $("appleIdentityButton").addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    if (button.dataset.socialReady !== "true" || state.socialBusy) return;
+    const nonce = randomNonce();
+    button.disabled = true; message(authMessage, "Opening Apple sign-in…", true);
+    try {
+      window.AppleID.auth.init({
+        clientId: state.socialConfig.apple.client_id,
+        scope: "name email",
+        redirectURI: `${location.origin}/app/`,
+        state: randomNonce(), nonce, usePopup: true,
+      });
+      const response = await window.AppleID.auth.signIn();
+      await finishSocialIdentity("apple", response.authorization.id_token, nonce);
+    } catch (error) {
+      if (error?.error !== "popup_closed_by_user") message(authMessage, "Apple sign-in could not be completed. Please try again.");
+    } finally { button.disabled = false; }
+  });
+  $("cancelSocialRecovery").addEventListener("click", () => { restoreStandardAuth(); message(authMessage, ""); });
+  $("socialRecoveryForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const button = event.currentTarget.querySelector(".primary-button");
+    const email = $("socialRecoveryEmail").value.trim();
+    setBusy(button, true, "Sending secure access…"); message(authMessage, "");
+    try {
+      await api("/v1/auth/reset-password", { method: "PUT", data: { email }, auth: false });
+      restoreStandardAuth();
+      $("loginForm").elements.email.value = email;
+      $("loginForm").elements.password.value = "";
+      message(authMessage, "Check your inbox for your temporary ParkSwap password, then sign in above.", true);
+    } catch (error) { message(authMessage, error.message); }
+    finally { setBusy(button, false); }
+  });
+
+  initializeSocialIdentity();
 
   async function enterApp() {
     authView.classList.add("hidden"); mainView.classList.remove("hidden");
