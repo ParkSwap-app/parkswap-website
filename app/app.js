@@ -7,6 +7,7 @@
     coords: null,
     mode: Number(localStorage.getItem("parkswap_mode")) || 0,
     spots: [],
+    activeScheduled: null,
     selectedSpot: null,
     map: null,
     userMarker: null,
@@ -24,6 +25,7 @@
   const authMessage = $("authMessage");
   const vehicleModal = $("vehicleModal");
   const spotModal = $("spotModal");
+  const scheduleModal = $("scheduleModal");
 
   function safeParse(value) { try { return value ? JSON.parse(value) : null; } catch { return null; } }
   function deviceId() {
@@ -226,13 +228,19 @@
     authView.classList.add("hidden"); mainView.classList.remove("hidden");
     $("profileName").textContent = state.user?.full_name || "ParkSwap Driver";
     $("profileEmail").textContent = state.user?.email || "";
-    renderVehicle(); initializeMap(); locate(); renderMode();
+    renderVehicle(); initializeMap(); renderMode();
+    requestAnimationFrame(() => requestAnimationFrame(() => state.map?.invalidateSize()));
+    locate();
     clearInterval(state.refreshTimer); state.refreshTimer = setInterval(() => { if (state.coords) loadSpots(false); }, 15000);
   }
   function initializeMap() {
     if (state.map || !window.L) return;
     state.map = L.map("map", { zoomControl: false, attributionControl: true }).setView([40.7128, -74.006], 13);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(state.map);
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      maxZoom: 20,
+      subdomains: "abcd",
+      attribution: "© OpenStreetMap © CARTO",
+    }).addTo(state.map);
   }
   function locate() {
     $("locationStatus").textContent = "Finding your location…";
@@ -251,9 +259,24 @@
   async function loadSpots(showErrors = true) {
     if (!state.coords || !state.token) return;
     try {
-      const payload = await api(`/v1/parking/list?latitude=${encodeURIComponent(state.coords.latitude)}&longitude=${encodeURIComponent(state.coords.longitude)}`);
-      const data = payload?.data || {}; const incoming = Array.isArray(data.parking_list) ? data.parking_list : [];
-      const previousIds = new Set(state.spots.map(spotId)); state.spots = incoming.filter((item) => Number(item.type) === 2 || Number(item.parkingStatus) === 2);
+      const latitude = encodeURIComponent(state.coords.latitude), longitude = encodeURIComponent(state.coords.longitude);
+      const [legacyResult, scheduledResult] = await Promise.allSettled([
+        api(`/v1/parking/list?latitude=${latitude}&longitude=${longitude}`),
+        api(`/v1/parking-network/scheduled-departures/nearby?latitude=${latitude}&longitude=${longitude}`),
+      ]);
+      if (legacyResult.status === "rejected" && scheduledResult.status === "rejected") throw legacyResult.reason;
+      const payload = legacyResult.status === "fulfilled" ? legacyResult.value : {};
+      const data = payload?.data || {};
+      const incoming = Array.isArray(data.parking_list) ? data.parking_list : [];
+      const scheduledData = scheduledResult.status === "fulfilled" ? scheduledResult.value?.data : {};
+      const scheduled = Array.isArray(scheduledData?.scheduled_departures)
+        ? scheduledData.scheduled_departures.map((item) => ({ ...item, opportunity_type: "scheduled" })) : [];
+      const previousIds = new Set(state.spots.map(spotId));
+      state.spots = [...incoming, ...scheduled].filter((item) => {
+        const lat = Number(field(item, "latitude", "profile_latitude"));
+        const lon = Number(field(item, "longitude", "profile_longitude"));
+        return Number.isFinite(lat) && Number.isFinite(lon);
+      });
       renderSpots();
       const fresh = state.spots.filter((item) => !previousIds.has(spotId(item)));
       if (fresh.length && previousIds.size) notifyNewSpot(fresh.length);
@@ -269,12 +292,13 @@
     return 3958.8 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
   }
   function renderSpots() {
-    $("nearbyCount").textContent = `${state.spots.length} nearby`;
+    $("nearbyCount").textContent = state.spots.length === 1 ? "1 active spot" : `${state.spots.length} active spots`;
     state.spotMarkers.forEach((marker) => marker.remove()); state.spotMarkers = [];
     if (state.map && window.L) state.spots.forEach((item) => {
       const lat = Number(field(item, "latitude", "profile_latitude")), lon = Number(field(item, "longitude", "profile_longitude"));
       if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
-      const marker = L.marker([lat, lon], { icon: L.divIcon({ className: "parking-pin", html: "<span>P</span>", iconSize: [36, 36], iconAnchor: [18, 36] }) }).addTo(state.map);
+      const scheduled = item.opportunity_type === "scheduled" || item.status === "pending" || item.status === "delayed";
+      const marker = L.marker([lat, lon], { icon: L.divIcon({ className: `parking-pin${scheduled ? " scheduled-pin" : ""}`, html: `<span>${scheduled ? "◷" : "P"}</span>`, iconSize: [36, 36], iconAnchor: [18, 36] }) }).addTo(state.map);
       marker.on("click", () => openSpot(item)); state.spotMarkers.push(marker);
     });
     const list = $("activityList");
@@ -283,7 +307,8 @@
     state.spots.forEach((item) => {
       const lat = field(item, "latitude", "profile_latitude"), lon = field(item, "longitude", "profile_longitude"), miles = distanceMiles(lat, lon);
       const button = document.createElement("button"); button.className = "activity-card";
-      button.innerHTML = `<span class="activity-icon">P</span><span><strong>Driver leaving a spot</strong><small>${escapeHtml(field(item, "location", "address") || "Nearby parking activity")}</small></span><b>${miles == null ? "Live" : miles < .1 ? "Nearby" : `${miles.toFixed(1)} mi`}</b>`;
+      const scheduled = item.opportunity_type === "scheduled" || item.status === "pending" || item.status === "delayed";
+      button.innerHTML = `<span class="activity-icon">${scheduled ? "◷" : "P"}</span><span><strong>${scheduled ? "Leaving soon — not confirmed" : "Driver leaving a spot"}</strong><small>${escapeHtml(field(item, "location", "address") || "Nearby parking activity")}</small></span><b>${miles == null ? (scheduled ? "Soon" : "Live") : miles < .1 ? "Nearby" : `${miles.toFixed(1)} mi`}</b>`;
       button.addEventListener("click", () => openSpot(item)); list.appendChild(button);
     });
   }
@@ -293,10 +318,12 @@
     const lat = field(item, "latitude", "profile_latitude"), lon = field(item, "longitude", "profile_longitude"), miles = distanceMiles(lat, lon);
     $("spotAddress").textContent = field(item, "location", "address") || "Nearby parking activity";
     $("spotDistance").textContent = miles == null ? "Nearby" : miles < .1 ? "Nearby" : `${miles.toFixed(1)} mi`;
-    $("spotUpdated").textContent = "Live";
+    const scheduled = item.opportunity_type === "scheduled" || item.status === "pending" || item.status === "delayed";
+    $("spotTitle").textContent = scheduled ? "Driver leaving soon" : "Driver leaving nearby";
+    $("spotUpdated").textContent = scheduled ? "Not confirmed" : "Live";
     $("directionsButton").href = `https://maps.apple.com/?daddr=${encodeURIComponent(lat)},${encodeURIComponent(lon)}&dirflg=d`;
-    $("claimButton").disabled = state.mode !== 1;
-    $("claimButton").querySelector("span").textContent = state.mode === 1 ? "I'm heading there" : "Start looking to claim";
+    $("claimButton").disabled = state.mode !== 1 || scheduled;
+    $("claimButton").querySelector("span").textContent = scheduled ? "Waiting for confirmation" : state.mode === 1 ? "I'm heading there" : "Start looking to claim";
     spotModal.classList.remove("hidden");
   }
   async function setMode(type) {
@@ -311,6 +338,32 @@
       toast(error.message);
     } finally { setBusy(button, false); }
   }
+  function openScheduleModal() {
+    if (!state.coords) { locate(); toast("ParkSwap needs your location first."); return; }
+    message($("scheduleMessage"), "");
+    scheduleModal.classList.remove("hidden");
+  }
+  $("scheduleForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!state.coords) return;
+    const button = event.currentTarget.querySelector("button[type=submit]");
+    const minutes = Number(new FormData(event.currentTarget).get("minutes"));
+    const scheduledTime = new Date(Date.now() + minutes * 60000).toISOString();
+    setBusy(button, true, "Scheduling…"); message($("scheduleMessage"), "");
+    try {
+      const payload = await api("/v1/parking-network/scheduled-departures", { method: "POST", data: {
+        latitude: state.coords.latitude,
+        longitude: state.coords.longitude,
+        location_accuracy: state.coords.accuracy || "",
+        scheduled_time: scheduledTime,
+      }});
+      state.activeScheduled = payload?.data?.scheduled_departure || null;
+      scheduleModal.classList.add("hidden");
+      toast(`Departure scheduled for about ${minutes} minutes from now.`);
+      await loadSpots(false);
+    } catch (error) { message($("scheduleMessage"), error.message); }
+    finally { setBusy(button, false); }
+  });
   async function stopMode() {
     if (!state.coords) return;
     try { await api("/v1/parking/request", { method: "POST", data: { location: "Current location", latitude: state.coords.latitude, longitude: state.coords.longitude, type: 0 } }); state.mode = 0; localStorage.removeItem("parkswap_mode"); renderMode(); toast("Parking activity stopped."); }
@@ -370,11 +423,11 @@
   async function installApp() { if (state.installPrompt) { state.installPrompt.prompt(); await state.installPrompt.userChoice; state.installPrompt = null; $("installButton").classList.add("hidden"); } else { toast(/iphone|ipad|ipod/i.test(navigator.userAgent) ? "On iPhone, tap Share, then Add to Home Screen." : "Use your browser menu and choose Install ParkSwap."); } }
   window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); state.installPrompt = event; $("installButton").classList.remove("hidden"); });
 
-  $("lookButton").addEventListener("click", () => setMode(1)); $("leaveButton").addEventListener("click", () => setMode(2)); $("stopButton").addEventListener("click", stopMode);
+  $("lookButton").addEventListener("click", () => setMode(1)); $("leaveButton").addEventListener("click", () => setMode(2)); $("soonButton").addEventListener("click", openScheduleModal); $("stopButton").addEventListener("click", stopMode);
   $("recenterButton").addEventListener("click", locate); $("claimButton").addEventListener("click", claimSelected); $("editVehicleButton").addEventListener("click", openVehicleModal);
   $("enableNotifications").addEventListener("click", enableNotifications); $("installButton").addEventListener("click", installApp); $("installFromProfile").addEventListener("click", installApp);
   $("signOutButton").addEventListener("click", () => signOut()); $("alertsButton").addEventListener("click", () => { $("alertBadge").classList.add("hidden"); showPanel("activityPanel"); });
-  document.querySelectorAll("[data-close-modal]").forEach((el) => el.addEventListener("click", () => { vehicleModal.classList.add("hidden"); spotModal.classList.add("hidden"); }));
+  document.querySelectorAll("[data-close-modal]").forEach((el) => el.addEventListener("click", () => { vehicleModal.classList.add("hidden"); spotModal.classList.add("hidden"); scheduleModal.classList.add("hidden"); }));
   document.querySelectorAll(".modal-close").forEach((el) => el.addEventListener("click", () => el.closest(".modal").classList.add("hidden")));
   document.querySelectorAll("[data-panel]").forEach((button) => button.addEventListener("click", () => showPanel(button.dataset.panel)));
   function showPanel(id) { document.querySelectorAll(".panel").forEach((panel) => panel.classList.toggle("active-panel", panel.id === id)); document.querySelectorAll("[data-panel]").forEach((button) => button.classList.toggle("active", button.dataset.panel === id)); if (id === "mapPanel" && state.map) setTimeout(() => state.map.invalidateSize(), 50); }

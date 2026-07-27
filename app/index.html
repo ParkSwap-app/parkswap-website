@@ -15,7 +15,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIINfQ3ynHTcKeHPtJdYjMZVx0BJsP+CTKk=" crossorigin="">
-  <link rel="stylesheet" href="app.css">
+  <link rel="stylesheet" href="app.css?v=20260727-live-network-1">
   <title>ParkSwap</title>
 </head>
 <body>
@@ -52,7 +52,7 @@
             <span class="provider-mark google-mark" aria-hidden="true">G</span><strong>Continue with Google</strong><b>→</b>
           </button>
           <button id="appleIdentityButton" class="social-auth-button" type="button" data-social-provider="apple" data-social-recovery="Apple">
-            <span class="provider-mark apple-provider-mark" aria-hidden="true">●</span><strong>Continue with Apple</strong><b>→</b>
+            <span class="provider-mark apple-provider-mark" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.21.07 2.05.67 2.76.72 1.06-.21 2.08-.82 3.21-.74 1.35.11 2.36.64 3.03 1.61-2.78 1.67-2.12 5.33.43 6.36-.51 1.35-1.17 2.7-2.13 3.7zM13.95 6.17c-.15-2 1.49-3.65 3.36-3.81.26 2.32-2.1 4.05-3.36 3.81z"/></svg></span><strong>Continue with Apple</strong><b>→</b>
           </button>
         </div>
         <form id="socialRecoveryForm" class="auth-form social-recovery hidden">
@@ -89,7 +89,7 @@
             <div class="sheet-handle"></div>
             <div class="action-heading">
               <div><p class="eyebrow">What are you doing?</p><h2>Parking, made simpler.</h2></div>
-              <span id="nearbyCount" class="count-pill">0 nearby</span>
+              <span id="nearbyCount" class="count-pill">Checking activity…</span>
             </div>
             <div class="mode-grid">
               <button id="lookButton" class="mode-card mode-look">
@@ -97,6 +97,9 @@
               </button>
               <button id="leaveButton" class="mode-card mode-leave">
                 <span class="mode-icon">P</span><span><strong>Leave Spot Now</strong><small>Share your spot safely</small></span><b>→</b>
+              </button>
+              <button id="soonButton" class="mode-card mode-soon">
+                <span class="mode-icon">◷</span><span><strong>Leaving Soon?</strong><small>Share when you expect to leave</small></span><b>→</b>
               </button>
             </div>
             <button id="stopButton" class="stop-button hidden">Stop sharing or searching</button>
@@ -165,8 +168,27 @@
     </div>
   </div>
 
+  <div id="scheduleModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="scheduleTitle">
+    <div class="modal-backdrop" data-close-modal></div>
+    <div class="modal-card schedule-card">
+      <button class="modal-close" data-close-modal aria-label="Close">×</button>
+      <p class="eyebrow">Scheduled departure</p><h2 id="scheduleTitle">When are you leaving?</h2>
+      <p class="modal-intro">We’ll ask you to confirm before your spot becomes live. Scheduled availability is never guaranteed.</p>
+      <form id="scheduleForm" class="auth-form">
+        <div class="time-options" role="radiogroup" aria-label="Expected departure time">
+          <label><input type="radio" name="minutes" value="5" checked><span>5 min</span></label>
+          <label><input type="radio" name="minutes" value="15"><span>15 min</span></label>
+          <label><input type="radio" name="minutes" value="30"><span>30 min</span></label>
+          <label><input type="radio" name="minutes" value="60"><span>60 min</span></label>
+        </div>
+        <button class="primary-button" type="submit"><span>Schedule departure</span><b>→</b></button>
+      </form>
+      <p id="scheduleMessage" class="form-message" role="status"></p>
+    </div>
+  </div>
+
   <div id="toast" class="toast hidden" role="status"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-  <script src="app.js" defer></script>
+  <script src="app.js?v=20260727-live-network-1" defer></script>
 </body>
 </html>
