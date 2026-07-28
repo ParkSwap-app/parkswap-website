@@ -403,8 +403,8 @@
     const finishWithError = (error) => {
       if (settled || requestId !== state.locationRequestId) return;
       settled = true;
-      $("locationStatus").textContent = "Location permission needed";
-      openLocationModal(locationErrorMessage(error));
+      $("locationStatus").textContent = "Search an address or enable location";
+      if (userInitiated || state.pendingAction) openLocationModal(locationErrorMessage(error));
       setBusy(button, false);
     };
     const timeout = setTimeout(() => finishWithError({ code: 3 }), 8000);
@@ -763,7 +763,13 @@
   $("enableNotifications").addEventListener("click", enableNotifications); $("installButton").addEventListener("click", installApp); $("installFromProfile").addEventListener("click", installApp);
   $("retryLocationButton").addEventListener("click", () => locate({ userInitiated: true }));
   $("chooseLocationButton").addEventListener("click", () => { state.locationRequestId += 1; setBusy($("retryLocationButton"), false); locationModal.classList.add("hidden"); state.manualLocationMode = true; $("map").closest(".map-wrap").classList.add("manual-location"); $("locationStatus").textContent = "Tap the map to choose your location"; showPanel("mapPanel"); refreshMapSize(); toast("Tap your current position on the map."); });
-  document.querySelectorAll("[data-close-location]").forEach((el) => el.addEventListener("click", () => { locationModal.classList.add("hidden"); state.pendingAction = null; }));
+  document.querySelectorAll("[data-close-location]").forEach((el) => el.addEventListener("click", () => {
+    state.locationRequestId += 1;
+    setBusy($("retryLocationButton"), false);
+    locationModal.classList.add("hidden");
+    state.pendingAction = null;
+    $("locationStatus").textContent = state.exploreCoords ? `Exploring ${state.exploreLabel}` : "Search an address or enable location";
+  }));
   $("signOutButton").addEventListener("click", () => signOut()); $("alertsButton").addEventListener("click", () => { $("alertBadge").classList.add("hidden"); showPanel("activityPanel"); });
   document.querySelectorAll('input[name="account_role"]').forEach((input) => input.addEventListener("change", () => setAccountRole(input.value)));
   document.querySelectorAll("[data-close-modal]").forEach((el) => el.addEventListener("click", () => { vehicleModal.classList.add("hidden"); spotModal.classList.add("hidden"); scheduleModal.classList.add("hidden"); spotterModal.classList.add("hidden"); }));
