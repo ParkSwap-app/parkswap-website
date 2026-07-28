@@ -14,8 +14,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIINfQ3ynHTcKeHPtJdYjMZVx0BJsP+CTKk=" crossorigin="">
-  <link rel="stylesheet" href="app.css?v=20260727-social-auth-3">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css?v=1.9.4">
+  <link rel="stylesheet" href="app.css?v=20260727-location-actions-1">
   <title>ParkSwap</title>
 </head>
 <body>
@@ -39,6 +39,13 @@
           <button class="primary-button" type="submit"><span>Sign in</span><b>→</b></button>
         </form>
         <form id="signupForm" class="auth-form hidden">
+          <fieldset class="role-choice">
+            <legend>How will you use ParkSwap?</legend>
+            <div>
+              <label><input type="radio" name="account_role" value="driver" checked><span><b>Join as a Driver</b><small>Find parking and share your spot.</small></span></label>
+              <label><input type="radio" name="account_role" value="spotter"><span><b>Join as a Spotter</b><small>Report open spots. No vehicle required.</small></span></label>
+            </div>
+          </fieldset>
           <label>Email<input name="email" type="email" autocomplete="email" required placeholder="you@example.com"></label>
           <label>Password<input name="password" type="password" autocomplete="new-password" minlength="6" required placeholder="At least 6 characters"></label>
           <label>Confirm password<input name="confirm_password" type="password" autocomplete="new-password" minlength="6" required placeholder="Repeat password"></label>
@@ -72,7 +79,7 @@
         <a class="app-brand" href="./"><img src="../parkswap-app-icon.png" alt=""><span>ParkSwap</span></a>
         <div class="header-actions">
           <button id="installButton" class="icon-button install-button hidden" aria-label="Install ParkSwap">↓</button>
-          <button id="alertsButton" class="icon-button" aria-label="View activity alerts">●<span id="alertBadge" class="alert-badge hidden">0</span></button>
+          <button id="alertsButton" class="icon-button alerts-button" aria-label="View parking alerts"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 20h4"/></svg><span id="alertBadge" class="alert-badge hidden">0</span></button>
         </div>
       </header>
 
@@ -89,14 +96,17 @@
             <div class="sheet-handle"></div>
             <div class="action-heading">
               <div><p class="eyebrow">What are you doing?</p><h2>Parking, made simpler.</h2></div>
-              <span id="nearbyCount" class="count-pill">0 nearby</span>
+              <span id="nearbyCount" class="count-pill">Checking activity…</span>
             </div>
             <div class="mode-grid">
-              <button id="lookButton" class="mode-card mode-look">
+              <button id="lookButton" class="mode-card mode-look" type="button">
                 <span class="mode-icon">⌖</span><span><strong>Find parking</strong><small>See drivers leaving nearby</small></span><b>→</b>
               </button>
-              <button id="leaveButton" class="mode-card mode-leave">
+              <button id="leaveButton" class="mode-card mode-leave" type="button">
                 <span class="mode-icon">P</span><span><strong>Leave Spot Now</strong><small>Share your spot safely</small></span><b>→</b>
+              </button>
+              <button id="soonButton" class="mode-card mode-soon" type="button">
+                <span class="mode-icon">◷</span><span><strong>Leaving Soon?</strong><small>Set a reminder, then confirm when ready</small></span><b>→</b>
               </button>
             </div>
             <button id="stopButton" class="stop-button hidden">Stop sharing or searching</button>
@@ -113,11 +123,11 @@
         <section id="accountPanel" class="panel">
           <div class="profile-hero"><img src="../parkswap-app-icon.png" alt=""><div><p class="eyebrow">Your ParkSwap</p><h2 id="profileName">Driver</h2><p id="profileEmail"></p></div></div>
           <div class="account-card">
-            <div><span>Account</span><strong>Free core access</strong></div>
+            <div><span>Account type</span><strong id="accountRole">Driver</strong></div>
             <div><span>Notifications</span><button id="enableNotifications">Enable</button></div>
             <div><span>Install on this phone</span><button id="installFromProfile">Install</button></div>
           </div>
-          <div class="account-card vehicle-card">
+          <div id="vehicleCard" class="account-card vehicle-card">
             <div class="card-title"><span>Vehicle</span><button id="editVehicleButton">Edit</button></div>
             <p id="vehicleSummary">Add your vehicle so another driver can recognize you during a handoff.</p>
           </div>
@@ -165,8 +175,42 @@
     </div>
   </div>
 
+  <div id="scheduleModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="scheduleTitle">
+    <div class="modal-backdrop" data-close-modal></div>
+    <div class="modal-card schedule-card">
+      <button class="modal-close" data-close-modal aria-label="Close">×</button>
+      <p class="eyebrow">Departure reminder</p><h2 id="scheduleTitle">When are you leaving?</h2>
+      <p class="modal-intro">Set a reminder now. Your spot becomes visible to other drivers only after you confirm with Leave Spot Now.</p>
+      <form id="scheduleForm" class="auth-form">
+        <div class="time-options" role="radiogroup" aria-label="Expected departure time">
+          <label><input type="radio" name="minutes" value="5" checked><span>5 min</span></label>
+          <label><input type="radio" name="minutes" value="15"><span>15 min</span></label>
+          <label><input type="radio" name="minutes" value="30"><span>30 min</span></label>
+          <label><input type="radio" name="minutes" value="60"><span>60 min</span></label>
+        </div>
+        <button class="primary-button" type="submit"><span>Set departure reminder</span><b>→</b></button>
+      </form>
+      <p id="scheduleMessage" class="form-message" role="status"></p>
+    </div>
+  </div>
+
+  <div id="locationModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="locationTitle">
+    <div class="modal-backdrop"></div>
+    <div class="modal-card location-card">
+      <button class="modal-close" data-close-location aria-label="Close">×</button>
+      <p class="eyebrow">Your location</p><h2 id="locationTitle">Choose where you are.</h2>
+      <p class="modal-intro">ParkSwap uses your location while the app is open to show nearby activity and publish only the parking actions you choose.</p>
+      <div class="location-actions">
+        <button id="retryLocationButton" class="primary-button" type="button"><span>Enable precise location</span><b>→</b></button>
+        <button id="chooseLocationButton" class="directions-button" type="button">Choose a point on the map</button>
+      </div>
+      <p id="locationMessage" class="location-message" role="status" aria-live="polite"></p>
+      <p class="safety-note"><span>!</span> If location permission is blocked, choose your position on the map before sharing a spot.</p>
+    </div>
+  </div>
+
   <div id="toast" class="toast hidden" role="status"></div>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-  <script src="app.js?v=20260727-social-auth" defer></script>
+  <script src="vendor/leaflet/leaflet.js?v=1.9.4"></script>
+  <script src="app.js?v=20260727-location-actions-2" defer></script>
 </body>
 </html>
