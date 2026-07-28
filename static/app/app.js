@@ -69,9 +69,13 @@
     catch (error) {
       if (error?.name === "AbortError") throw new Error("ParkSwap's live service took too long to respond. Please try again.");
       throw new Error("ParkSwap could not reach the service. Check your connection and try again.");
-    } finally { clearTimeout(timeout); }
+    }
     let payload;
-    try { payload = await response.json(); } catch { throw new Error("ParkSwap received an unexpected response. Please try again."); }
+    try { payload = await response.json(); }
+    catch (error) {
+      if (error?.name === "AbortError") throw new Error("ParkSwap's live service took too long to respond. Please try again.");
+      throw new Error("ParkSwap received an unexpected response. Please try again.");
+    } finally { clearTimeout(timeout); }
     const status = Number(payload.status_code || response.status);
     if (!response.ok || (status && status >= 400)) {
       if (payload.error_type === "INVALID_TOKEN" || payload.error_type === "SESSION_EXPIRED") signOut(false);
