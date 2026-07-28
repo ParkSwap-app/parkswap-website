@@ -15,7 +15,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css?v=1.9.4">
-  <link rel="stylesheet" href="app.css?v=20260727-map-stability-1">
+  <link rel="stylesheet" href="app.css?v=20260727-location-actions-1">
   <title>ParkSwap</title>
 </head>
 <body>
@@ -99,13 +99,13 @@
               <span id="nearbyCount" class="count-pill">Checking activity…</span>
             </div>
             <div class="mode-grid">
-              <button id="lookButton" class="mode-card mode-look">
+              <button id="lookButton" class="mode-card mode-look" type="button">
                 <span class="mode-icon">⌖</span><span><strong>Find parking</strong><small>See drivers leaving nearby</small></span><b>→</b>
               </button>
-              <button id="leaveButton" class="mode-card mode-leave">
+              <button id="leaveButton" class="mode-card mode-leave" type="button">
                 <span class="mode-icon">P</span><span><strong>Leave Spot Now</strong><small>Share your spot safely</small></span><b>→</b>
               </button>
-              <button id="soonButton" class="mode-card mode-soon">
+              <button id="soonButton" class="mode-card mode-soon" type="button">
                 <span class="mode-icon">◷</span><span><strong>Leaving Soon?</strong><small>Share when you expect to leave</small></span><b>→</b>
               </button>
             </div>
@@ -194,8 +194,22 @@
     </div>
   </div>
 
+  <div id="locationModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="locationTitle">
+    <div class="modal-backdrop"></div>
+    <div class="modal-card location-card">
+      <button class="modal-close" data-close-location aria-label="Close">×</button>
+      <p class="eyebrow">Your location</p><h2 id="locationTitle">Choose where you are.</h2>
+      <p class="modal-intro">ParkSwap uses your location while the app is open to show nearby activity and publish only the parking actions you choose.</p>
+      <div class="location-actions">
+        <button id="retryLocationButton" class="primary-button" type="button"><span>Enable precise location</span><b>→</b></button>
+        <button id="chooseLocationButton" class="directions-button" type="button">Choose a point on the map</button>
+      </div>
+      <p class="safety-note"><span>!</span> If location permission is blocked, choose your position on the map before sharing a spot.</p>
+    </div>
+  </div>
+
   <div id="toast" class="toast hidden" role="status"></div>
   <script src="vendor/leaflet/leaflet.js?v=1.9.4"></script>
-  <script src="app.js?v=20260727-map-stability-1" defer></script>
+  <script src="app.js?v=20260727-location-actions-1" defer></script>
 </body>
 </html>

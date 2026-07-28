@@ -8,7 +8,7 @@
     coords: null,
     mode: Number(localStorage.getItem("parkswap_mode")) || 0,
     spots: [],
-    activeScheduled: null,
+    activeScheduled: safeParse(localStorage.getItem("parkswap_scheduled_departure")) || null,
     selectedSpot: null,
     map: null,
     userMarker: null,
@@ -18,6 +18,9 @@
     socialConfig: null,
     googleNonce: "",
     socialBusy: false,
+    pendingAction: null,
+    manualLocationMode: false,
+    scheduleTimer: null,
   };
 
   const $ = (id) => document.getElementById(id);
@@ -27,6 +30,7 @@
   const vehicleModal = $("vehicleModal");
   const spotModal = $("spotModal");
   const scheduleModal = $("scheduleModal");
+  const locationModal = $("locationModal");
 
   function safeParse(value) { try { return value ? JSON.parse(value) : null; } catch { return null; } }
   function deviceId() {
@@ -67,7 +71,7 @@
   function setBusy(button, busy, label) {
     if (!button) return;
     button.disabled = busy;
-    const span = button.querySelector("span");
+    const span = button.querySelector("strong") || button.querySelector("span");
     if (span) { if (!button.dataset.label) button.dataset.label = span.textContent; span.textContent = busy ? label : button.dataset.label; }
   }
   function message(el, text, success = false) { el.textContent = text || ""; el.classList.toggle("success", success); }
@@ -252,6 +256,7 @@
     $("profileName").textContent = state.user?.full_name || (state.accountRole === "spotter" ? "ParkSwap Spotter" : "ParkSwap Driver");
     $("profileEmail").textContent = state.user?.email || "";
     renderVehicle(); initializeMap(); renderMode();
+    scheduleLocalReminder();
     refreshMapSize();
     setTimeout(refreshMapSize, 250);
     setTimeout(refreshMapSize, 900);
@@ -291,21 +296,41 @@
     });
     primaryTiles.addTo(state.map);
     state.map.whenReady(refreshMapSize);
+    state.map.on("click", (event) => {
+      if (!state.manualLocationMode) return;
+      applyCoordinates(event.latlng.lat, event.latlng.lng, null, true);
+    });
     if (window.ResizeObserver) new ResizeObserver(refreshMapSize).observe($("map"));
+  }
+  function openLocationModal() { locationModal.classList.remove("hidden"); }
+  function runPendingAction() {
+    const action = state.pendingAction;
+    state.pendingAction = null;
+    if (action === "look") setMode(1);
+    else if (action === "leave") setMode(2);
+    else if (action === "schedule") openScheduleModal();
+  }
+  function applyCoordinates(latitude, longitude, accuracy, manual = false) {
+    state.coords = { latitude: Number(latitude), longitude: Number(longitude), accuracy: accuracy == null ? "" : Number(accuracy), manual };
+    state.manualLocationMode = false;
+    $("map").closest(".map-wrap").classList.remove("manual-location");
+    locationModal.classList.add("hidden");
+    $("locationStatus").textContent = manual ? "Location selected on map" : (Number(accuracy) < 100 ? "Location ready" : "Approximate location");
+    if (state.map) {
+      state.map.setView([state.coords.latitude, state.coords.longitude], 15);
+      if (state.userMarker) state.userMarker.remove();
+      state.userMarker = L.marker([state.coords.latitude, state.coords.longitude], { icon: L.divIcon({ className: "user-pin", iconSize: [18, 18] }) }).addTo(state.map);
+    }
+    loadSpots(false);
+    if (manual) toast("Location selected. Continue with your parking action.");
+    if (state.pendingAction) setTimeout(runPendingAction, 150);
   }
   function locate() {
     $("locationStatus").textContent = "Finding your location…";
-    if (!navigator.geolocation) { $("locationStatus").textContent = "Location is unavailable"; return; }
+    if (!navigator.geolocation) { $("locationStatus").textContent = "Choose your location on the map"; openLocationModal(); return; }
     navigator.geolocation.getCurrentPosition((position) => {
-      state.coords = { latitude: position.coords.latitude, longitude: position.coords.longitude, accuracy: position.coords.accuracy };
-      $("locationStatus").textContent = position.coords.accuracy < 100 ? "Location ready" : "Approximate location";
-      if (state.map) {
-        state.map.setView([state.coords.latitude, state.coords.longitude], 15);
-        if (state.userMarker) state.userMarker.remove();
-        state.userMarker = L.marker([state.coords.latitude, state.coords.longitude], { icon: L.divIcon({ className: "user-pin", iconSize: [18, 18] }) }).addTo(state.map);
-      }
-      loadSpots();
-    }, () => { $("locationStatus").textContent = "Allow location to use ParkSwap"; toast("ParkSwap needs your location to show nearby parking activity."); }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 15000 });
+      applyCoordinates(position.coords.latitude, position.coords.longitude, position.coords.accuracy);
+    }, () => { $("locationStatus").textContent = "Location permission needed"; openLocationModal(); }, { enableHighAccuracy: false, timeout: 15000, maximumAge: 30000 });
   }
   async function loadSpots(showErrors = true) {
     if (!state.coords || !state.token) return;
@@ -378,7 +403,7 @@
     spotModal.classList.remove("hidden");
   }
   async function setMode(type) {
-    if (!state.coords) { locate(); toast("ParkSwap needs your location first."); return; }
+    if (!state.coords) { state.pendingAction = type === 1 ? "look" : "leave"; openLocationModal(); return; }
     const button = type === 1 ? $("lookButton") : $("leaveButton"); setBusy(button, true, type === 1 ? "Starting search…" : "Sharing spot…");
     try {
       await api("/v1/parking/request", { method: "POST", data: { location: "Current location", latitude: state.coords.latitude, longitude: state.coords.longitude, type } });
@@ -390,7 +415,7 @@
     } finally { setBusy(button, false); }
   }
   function openScheduleModal() {
-    if (!state.coords) { locate(); toast("ParkSwap needs your location first."); return; }
+    if (!state.coords) { state.pendingAction = "schedule"; openLocationModal(); return; }
     message($("scheduleMessage"), "");
     scheduleModal.classList.remove("hidden");
   }
@@ -412,19 +437,44 @@
       scheduleModal.classList.add("hidden");
       toast(`Departure scheduled for about ${minutes} minutes from now.`);
       await loadSpots(false);
-    } catch (error) { message($("scheduleMessage"), error.message); }
+    } catch (error) {
+      state.activeScheduled = { scheduled_time: scheduledTime, status: "pending", local_reminder: true };
+      localStorage.setItem("parkswap_scheduled_departure", JSON.stringify(state.activeScheduled));
+      scheduleModal.classList.add("hidden");
+      scheduleLocalReminder(); renderMode();
+      toast(`Reminder set for about ${minutes} minutes from now. Confirm with Leave Spot Now when ready.`);
+    }
     finally { setBusy(button, false); }
   });
   async function stopMode() {
+    if (!state.mode && state.activeScheduled?.local_reminder) {
+      state.activeScheduled = null; localStorage.removeItem("parkswap_scheduled_departure"); clearTimeout(state.scheduleTimer); renderMode(); toast("Leaving Soon reminder cancelled."); return;
+    }
     if (!state.coords) return;
     try { await api("/v1/parking/request", { method: "POST", data: { location: "Current location", latitude: state.coords.latitude, longitude: state.coords.longitude, type: 0 } }); state.mode = 0; localStorage.removeItem("parkswap_mode"); renderMode(); toast("Parking activity stopped."); }
     catch (error) { toast(error.message); }
   }
   function renderMode() {
     const active = $("activeMode"), stop = $("stopButton");
+    if (!state.mode && state.activeScheduled?.local_reminder) {
+      const due = new Date(state.activeScheduled.scheduled_time).getTime() <= Date.now();
+      active.classList.remove("hidden"); stop.classList.remove("hidden");
+      active.textContent = due ? "Your Leaving Soon reminder is due. Tap Leave Spot Now when you are ready to share the spot." : `Leaving Soon reminder set for ${new Date(state.activeScheduled.scheduled_time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.`;
+      return;
+    }
     if (!state.mode) { active.classList.add("hidden"); stop.classList.add("hidden"); return; }
     active.classList.remove("hidden"); stop.classList.remove("hidden");
     active.textContent = state.mode === 1 ? "Looking is active. ParkSwap is refreshing nearby departures automatically." : "Your spot is live. Stay safely parked while another driver responds.";
+  }
+  function scheduleLocalReminder() {
+    clearTimeout(state.scheduleTimer);
+    if (!state.activeScheduled?.local_reminder) return;
+    const delay = Math.max(0, new Date(state.activeScheduled.scheduled_time).getTime() - Date.now());
+    state.scheduleTimer = setTimeout(() => {
+      renderMode();
+      toast("Are you leaving now? Tap Leave Spot Now to publish your spot.");
+      if (Notification.permission === "granted") new Notification("Are you leaving now?", { body: "Open ParkSwap and confirm with Leave Spot Now.", icon: "icon-192.png" });
+    }, Math.min(delay, 2147483647));
   }
   async function claimSelected() {
     const item = state.selectedSpot; if (!item || state.mode !== 1 || !state.coords) return;
@@ -479,6 +529,9 @@
   $("lookButton").addEventListener("click", () => setMode(1)); $("leaveButton").addEventListener("click", () => setMode(2)); $("soonButton").addEventListener("click", openScheduleModal); $("stopButton").addEventListener("click", stopMode);
   $("recenterButton").addEventListener("click", locate); $("claimButton").addEventListener("click", claimSelected); $("editVehicleButton").addEventListener("click", openVehicleModal);
   $("enableNotifications").addEventListener("click", enableNotifications); $("installButton").addEventListener("click", installApp); $("installFromProfile").addEventListener("click", installApp);
+  $("retryLocationButton").addEventListener("click", () => { locationModal.classList.add("hidden"); locate(); });
+  $("chooseLocationButton").addEventListener("click", () => { locationModal.classList.add("hidden"); state.manualLocationMode = true; $("map").closest(".map-wrap").classList.add("manual-location"); $("locationStatus").textContent = "Tap the map to choose your location"; showPanel("mapPanel"); refreshMapSize(); toast("Tap your current position on the map."); });
+  document.querySelectorAll("[data-close-location]").forEach((el) => el.addEventListener("click", () => { locationModal.classList.add("hidden"); state.pendingAction = null; }));
   $("signOutButton").addEventListener("click", () => signOut()); $("alertsButton").addEventListener("click", () => { $("alertBadge").classList.add("hidden"); showPanel("activityPanel"); });
   document.querySelectorAll('input[name="account_role"]').forEach((input) => input.addEventListener("change", () => setAccountRole(input.value)));
   document.querySelectorAll("[data-close-modal]").forEach((el) => el.addEventListener("click", () => { vehicleModal.classList.add("hidden"); spotModal.classList.add("hidden"); scheduleModal.classList.add("hidden"); }));
