@@ -36,15 +36,23 @@ jobs:
           username: ${{ secrets.PARKSWAP_SSH_USER }}
           password: ${{ secrets.PARKSWAP_SSH_PASSWORD }}
           envs: SUDO_PASSWORD
-          script_stop: true
           script: |
             set -eu
             test -s /tmp/parkswap-web-release/index.html
             test -s /tmp/parkswap-web-release/app.js
             test -s /tmp/parkswap-web-release/app.css
             printf '%s\n' "$SUDO_PASSWORD" | sudo -S mkdir -p /var/www/html/backend-api/app
-            printf '%s\n' "$SUDO_PASSWORD" | sudo -S cp -a /var/www/html/backend-api/app /var/www/html/backend-api/app.backup-actions
-            printf '%s\n' "$SUDO_PASSWORD" | sudo -S cp -a /tmp/parkswap-web-release/. /var/www/html/backend-api/app/
+            targets="/var/www/html/backend-api/app"
+            discovered="$(printf '%s\n' "$SUDO_PASSWORD" | sudo -S find /var/www -type f -path '*/app/app.css' -printf '%h\n' 2>/dev/null | sort -u || true)"
+            for target in $discovered; do
+              case " $targets " in *" $target "*) ;; *) targets="$targets $target" ;; esac
+            done
+            for target in $targets; do
+              test -d "$target" || continue
+              printf '%s\n' "$SUDO_PASSWORD" | sudo -S cp -a "$target" "${target}.backup-actions"
+              printf '%s\n' "$SUDO_PASSWORD" | sudo -S cp -a /tmp/parkswap-web-release/. "$target/"
+              echo "Activated ParkSwap web release in $target"
+            done
             printf '%s\n' "$SUDO_PASSWORD" | sudo -S nginx -t
             printf '%s\n' "$SUDO_PASSWORD" | sudo -S systemctl reload nginx
             rm -rf /tmp/parkswap-web-release
