@@ -106,7 +106,7 @@
                 <span class="mode-icon">P</span><span><strong>Leave Spot Now</strong><small>Share your spot safely</small></span><b>→</b>
               </button>
               <button id="soonButton" class="mode-card mode-soon" type="button">
-                <span class="mode-icon">◷</span><span><strong>Leaving Soon?</strong><small>Share when you expect to leave</small></span><b>→</b>
+                <span class="mode-icon">◷</span><span><strong>Leaving Soon?</strong><small>Set a reminder, then confirm when ready</small></span><b>→</b>
               </button>
             </div>
             <button id="stopButton" class="stop-button hidden">Stop sharing or searching</button>
@@ -179,8 +179,8 @@
     <div class="modal-backdrop" data-close-modal></div>
     <div class="modal-card schedule-card">
       <button class="modal-close" data-close-modal aria-label="Close">×</button>
-      <p class="eyebrow">Scheduled departure</p><h2 id="scheduleTitle">When are you leaving?</h2>
-      <p class="modal-intro">We’ll ask you to confirm before your spot becomes live. Scheduled availability is never guaranteed.</p>
+      <p class="eyebrow">Departure reminder</p><h2 id="scheduleTitle">When are you leaving?</h2>
+      <p class="modal-intro">Set a reminder now. Your spot becomes visible to other drivers only after you confirm with Leave Spot Now.</p>
       <form id="scheduleForm" class="auth-form">
         <div class="time-options" role="radiogroup" aria-label="Expected departure time">
           <label><input type="radio" name="minutes" value="5" checked><span>5 min</span></label>
@@ -188,7 +188,7 @@
           <label><input type="radio" name="minutes" value="30"><span>30 min</span></label>
           <label><input type="radio" name="minutes" value="60"><span>60 min</span></label>
         </div>
-        <button class="primary-button" type="submit"><span>Schedule departure</span><b>→</b></button>
+        <button class="primary-button" type="submit"><span>Set departure reminder</span><b>→</b></button>
       </form>
       <p id="scheduleMessage" class="form-message" role="status"></p>
     </div>
@@ -204,12 +204,13 @@
         <button id="retryLocationButton" class="primary-button" type="button"><span>Enable precise location</span><b>→</b></button>
         <button id="chooseLocationButton" class="directions-button" type="button">Choose a point on the map</button>
       </div>
+      <p id="locationMessage" class="location-message" role="status" aria-live="polite"></p>
       <p class="safety-note"><span>!</span> If location permission is blocked, choose your position on the map before sharing a spot.</p>
     </div>
   </div>
 
   <div id="toast" class="toast hidden" role="status"></div>
   <script src="vendor/leaflet/leaflet.js?v=1.9.4"></script>
-  <script src="app.js?v=20260727-location-actions-1" defer></script>
+  <script src="app.js?v=20260727-location-actions-2" defer></script>
 </body>
 </html>

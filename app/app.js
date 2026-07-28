@@ -20,6 +20,7 @@
     socialBusy: false,
     pendingAction: null,
     manualLocationMode: false,
+    locationRequestId: 0,
     scheduleTimer: null,
   };
 
@@ -302,7 +303,10 @@
     });
     if (window.ResizeObserver) new ResizeObserver(refreshMapSize).observe($("map"));
   }
-  function openLocationModal() { locationModal.classList.remove("hidden"); }
+  function openLocationModal(text = "") {
+    locationModal.classList.remove("hidden");
+    $("locationMessage").textContent = text;
+  }
   function runPendingAction() {
     const action = state.pendingAction;
     state.pendingAction = null;
@@ -325,12 +329,39 @@
     if (manual) toast("Location selected. Continue with your parking action.");
     if (state.pendingAction) setTimeout(runPendingAction, 150);
   }
-  function locate() {
+  function locationErrorMessage(error) {
+    if (error?.code === 1) return "Location access is blocked. Choose a point on the map, or enable Location in your browser settings and try again.";
+    if (error?.code === 2) return "Your current location is unavailable. Choose a point on the map to continue.";
+    return "Location is taking too long. Choose a point on the map to continue now.";
+  }
+  function locate({ userInitiated = false } = {}) {
+    const requestId = ++state.locationRequestId;
+    const button = $("retryLocationButton");
     $("locationStatus").textContent = "Finding your location…";
-    if (!navigator.geolocation) { $("locationStatus").textContent = "Choose your location on the map"; openLocationModal(); return; }
+    if (userInitiated) {
+      openLocationModal("Your browser may show a location permission request.");
+      setBusy(button, true, "Requesting access…");
+    }
+    if (!navigator.geolocation) {
+      $("locationStatus").textContent = "Choose your location on the map";
+      openLocationModal("Precise location is not available in this browser. Choose a point on the map to continue.");
+      setBusy(button, false);
+      return;
+    }
+    let settled = false;
+    const finishWithError = (error) => {
+      if (settled || requestId !== state.locationRequestId) return;
+      settled = true;
+      $("locationStatus").textContent = "Location permission needed";
+      openLocationModal(locationErrorMessage(error));
+      setBusy(button, false);
+    };
+    const timeout = setTimeout(() => finishWithError({ code: 3 }), 8000);
     navigator.geolocation.getCurrentPosition((position) => {
+      if (settled || requestId !== state.locationRequestId) return;
+      settled = true; clearTimeout(timeout); setBusy(button, false);
       applyCoordinates(position.coords.latitude, position.coords.longitude, position.coords.accuracy);
-    }, () => { $("locationStatus").textContent = "Location permission needed"; openLocationModal(); }, { enableHighAccuracy: false, timeout: 15000, maximumAge: 30000 });
+    }, (error) => { clearTimeout(timeout); finishWithError(error); }, { enableHighAccuracy: true, timeout: 7000, maximumAge: 30000 });
   }
   async function loadSpots(showErrors = true) {
     if (!state.coords || !state.token) return;
@@ -527,10 +558,10 @@
   window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); state.installPrompt = event; $("installButton").classList.remove("hidden"); });
 
   $("lookButton").addEventListener("click", () => setMode(1)); $("leaveButton").addEventListener("click", () => setMode(2)); $("soonButton").addEventListener("click", openScheduleModal); $("stopButton").addEventListener("click", stopMode);
-  $("recenterButton").addEventListener("click", locate); $("claimButton").addEventListener("click", claimSelected); $("editVehicleButton").addEventListener("click", openVehicleModal);
+  $("recenterButton").addEventListener("click", () => locate({ userInitiated: true })); $("claimButton").addEventListener("click", claimSelected); $("editVehicleButton").addEventListener("click", openVehicleModal);
   $("enableNotifications").addEventListener("click", enableNotifications); $("installButton").addEventListener("click", installApp); $("installFromProfile").addEventListener("click", installApp);
-  $("retryLocationButton").addEventListener("click", () => { locationModal.classList.add("hidden"); locate(); });
-  $("chooseLocationButton").addEventListener("click", () => { locationModal.classList.add("hidden"); state.manualLocationMode = true; $("map").closest(".map-wrap").classList.add("manual-location"); $("locationStatus").textContent = "Tap the map to choose your location"; showPanel("mapPanel"); refreshMapSize(); toast("Tap your current position on the map."); });
+  $("retryLocationButton").addEventListener("click", () => locate({ userInitiated: true }));
+  $("chooseLocationButton").addEventListener("click", () => { state.locationRequestId += 1; setBusy($("retryLocationButton"), false); locationModal.classList.add("hidden"); state.manualLocationMode = true; $("map").closest(".map-wrap").classList.add("manual-location"); $("locationStatus").textContent = "Tap the map to choose your location"; showPanel("mapPanel"); refreshMapSize(); toast("Tap your current position on the map."); });
   document.querySelectorAll("[data-close-location]").forEach((el) => el.addEventListener("click", () => { locationModal.classList.add("hidden"); state.pendingAction = null; }));
   $("signOutButton").addEventListener("click", () => signOut()); $("alertsButton").addEventListener("click", () => { $("alertBadge").classList.add("hidden"); showPanel("activityPanel"); });
   document.querySelectorAll('input[name="account_role"]').forEach((input) => input.addEventListener("change", () => setAccountRole(input.value)));
