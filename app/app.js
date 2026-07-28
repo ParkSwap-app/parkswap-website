@@ -493,18 +493,38 @@
     closeDestinationResults();
     loadSpots().then(() => toast("Showing live opportunities and community activity near this address."));
   }
+  function destinationCopy(match) {
+    const address = match?.address || {};
+    const parts = String(match?.display_name || "U.S. destination").split(",").map((part) => part.trim()).filter(Boolean);
+    const street = [address.house_number, address.road || address.pedestrian || address.footway].filter(Boolean).join(" ");
+    const name = String(match?.name || "").trim();
+    const primary = name || street || parts[0] || "Matching destination";
+    const locality = address.city || address.town || address.village || address.hamlet || address.borough || address.suburb || address.county;
+    const region = [address.state, address.postcode].filter(Boolean).join(" ");
+    const secondaryParts = [];
+    if (street && street.toLowerCase() !== primary.toLowerCase()) secondaryParts.push(street);
+    if (locality && !primary.toLowerCase().includes(String(locality).toLowerCase())) secondaryParts.push(locality);
+    if (region) secondaryParts.push(region);
+    const secondary = secondaryParts.join(" · ") || parts.slice(1, 4).join(", ") || "United States";
+    return { primary, secondary };
+  }
   function renderDestinationResults(matches) {
     const results = $("destinationResults");
     results.replaceChildren();
     state.destinationResults = matches;
+    const header = document.createElement("div");
+    header.className = "destination-results-header";
+    header.setAttribute("role", "presentation");
+    header.innerHTML = `<span><strong>Select an address</strong><small>Tap a result to view nearby parking</small></span><b>${matches.length} ${matches.length === 1 ? "match" : "matches"}</b>`;
+    results.appendChild(header);
     matches.forEach((match, index) => {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "destination-result";
       button.id = `destination-result-${index}`;
       button.setAttribute("role", "option");
-      const parts = String(match.display_name || "U.S. destination").split(",").map((part) => part.trim()).filter(Boolean);
-      button.innerHTML = `<span>⌖</span><span><strong>${escapeHtml(parts.slice(0, 2).join(", "))}</strong><small>${escapeHtml(parts.slice(2, 5).join(", "))}</small></span><b>→</b>`;
+      const copy = destinationCopy(match);
+      button.innerHTML = `<span aria-hidden="true">⌖</span><span class="destination-result-copy"><strong>${escapeHtml(copy.primary)}</strong><small>${escapeHtml(copy.secondary)}</small></span><b>Select</b>`;
       button.setAttribute("aria-label", `Choose ${String(match.display_name || `result ${index + 1}`)}`);
       button.addEventListener("click", () => applyDestination(match));
       results.appendChild(button);
