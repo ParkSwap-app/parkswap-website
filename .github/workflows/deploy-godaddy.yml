@@ -1,0 +1,50 @@
+name: Deploy ParkSwap web app to GoDaddy
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: parkswap-production-web
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the approved release
+        uses: actions/checkout@v4
+
+      - name: Upload web app release
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.PARKSWAP_HOST }}
+          username: ${{ secrets.PARKSWAP_SSH_USER }}
+          password: ${{ secrets.PARKSWAP_SSH_PASSWORD }}
+          source: "static/app/*"
+          target: "/tmp/parkswap-web-release"
+          strip_components: 2
+          overwrite: true
+
+      - name: Validate and activate release
+        uses: appleboy/ssh-action@v1
+        env:
+          SUDO_PASSWORD: ${{ secrets.PARKSWAP_SUDO_PASSWORD }}
+        with:
+          host: ${{ secrets.PARKSWAP_HOST }}
+          username: ${{ secrets.PARKSWAP_SSH_USER }}
+          password: ${{ secrets.PARKSWAP_SSH_PASSWORD }}
+          envs: SUDO_PASSWORD
+          script_stop: true
+          script: |
+            set -eu
+            test -s /tmp/parkswap-web-release/index.html
+            test -s /tmp/parkswap-web-release/app.js
+            test -s /tmp/parkswap-web-release/app.css
+            printf '%s\n' "$SUDO_PASSWORD" | sudo -S mkdir -p /var/www/html/backend-api/app
+            printf '%s\n' "$SUDO_PASSWORD" | sudo -S cp -a /var/www/html/backend-api/app /var/www/html/backend-api/app.backup-actions
+            printf '%s\n' "$SUDO_PASSWORD" | sudo -S cp -a /tmp/parkswap-web-release/. /var/www/html/backend-api/app/
+            printf '%s\n' "$SUDO_PASSWORD" | sudo -S nginx -t
+            printf '%s\n' "$SUDO_PASSWORD" | sudo -S systemctl reload nginx
+            rm -rf /tmp/parkswap-web-release
