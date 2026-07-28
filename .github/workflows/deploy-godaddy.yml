@@ -43,14 +43,19 @@ jobs:
             test -s /tmp/parkswap-web-release/app.css
             printf '%s\n' "$SUDO_PASSWORD" | sudo -S mkdir -p /var/www/html/backend-api/app
             targets="/var/www/html/backend-api/app"
-            discovered="$(printf '%s\n' "$SUDO_PASSWORD" | sudo -S find /var/www -type f -path '*/app/app.css' -printf '%h\n' 2>/dev/null | sort -u || true)"
+            discovered="$(printf '%s\n' "$SUDO_PASSWORD" | sudo -S find /var/www /home -type f -path '*/app/index.html' \
+              ! -path '*backup*' ! -path '*/.git/*' -printf '%h\n' 2>/dev/null | sort -u || true)"
             for target in $discovered; do
               case " $targets " in *" $target "*) ;; *) targets="$targets $target" ;; esac
             done
             for target in $targets; do
               test -d "$target" || continue
-              printf '%s\n' "$SUDO_PASSWORD" | sudo -S cp -a "$target" "${target}.backup-actions"
+              stamp="$(date +%Y%m%d%H%M%S)"
+              printf '%s\n' "$SUDO_PASSWORD" | sudo -S mkdir -p "/var/backups/parkswap-web/$stamp"
+              printf '%s\n' "$SUDO_PASSWORD" | sudo -S cp -a "$target" "/var/backups/parkswap-web/$stamp/$(printf '%s' "$target" | tr '/' '_')"
               printf '%s\n' "$SUDO_PASSWORD" | sudo -S cp -a /tmp/parkswap-web-release/. "$target/"
+              grep -Fq '20260728-live-address-4' "$target/index.html"
+              grep -Fq 'https://app.parkswap.com/api' "$target/app.js"
               echo "Activated ParkSwap web release in $target"
             done
             printf '%s\n' "$SUDO_PASSWORD" | sudo -S nginx -t
