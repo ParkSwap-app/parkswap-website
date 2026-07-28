@@ -24,6 +24,33 @@ jobs:
           printf '%s' "$ROUTES_B64" | base64 --decode > release/application/config/routes.php
           printf '%s' "$CONTROLLER_B64" | base64 --decode > release/application/modules/api_v1/controllers/Parking.php
           printf '%s' "$MODEL_B64" | base64 --decode > release/application/modules/api_v1/models/Parking_model.php
+          python3 - <<'PY'
+          from pathlib import Path
+
+          model = Path("release/application/modules/api_v1/models/Parking_model.php")
+          text = model.read_text()
+          old_select = "ROUND(profile_latitude, 2) AS zone_latitude,\n\t\t\tROUND(profile_longitude, 2) AS zone_longitude,"
+          new_select = "ROUND(AVG(profile_latitude), 3) AS zone_latitude,\n\t\t\tROUND(AVG(profile_longitude), 3) AS zone_longitude,"
+          old_group = "GROUP BY ROUND(profile_latitude, 2), ROUND(profile_longitude, 2)"
+          new_group = "GROUP BY ROUND(profile_latitude, 1), ROUND(profile_longitude, 1)"
+          if old_select in text:
+              text = text.replace(old_select, new_select)
+          if old_group in text:
+              text = text.replace(old_group, new_group)
+          if new_select not in text or new_group not in text:
+              raise SystemExit("Expected privacy-zone aggregation contract was not found")
+          model.write_text(text)
+
+          controller = Path("release/application/modules/api_v1/controllers/Parking.php")
+          text = controller.read_text()
+          intensity = "'intensity' => $count >= 25 ? 3 : ($count >= 10 ? 2 : 1),"
+          radius = "'radius_m' => 4500,"
+          if radius not in text:
+              if intensity not in text:
+                  raise SystemExit("Expected activity-zone response contract was not found")
+              text = text.replace(intensity, intensity + "\n\t\t\t\t'radius_m' => 4500,")
+          controller.write_text(text)
+          PY
           test -s release/application/config/routes.php
           test -s release/application/modules/api_v1/controllers/Parking.php
           test -s release/application/modules/api_v1/models/Parking_model.php
