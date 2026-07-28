@@ -404,6 +404,7 @@
       if (settled || requestId !== state.locationRequestId) return;
       settled = true;
       $("locationStatus").textContent = "Search an address or enable location";
+      $("nearbyCount").textContent = "Search to view activity";
       if (userInitiated || state.pendingAction) openLocationModal(locationErrorMessage(error));
       setBusy(button, false);
     };
@@ -503,8 +504,9 @@
       const latitude = Number(zone.latitude), longitude = Number(zone.longitude);
       if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
       const intensity = Math.max(1, Math.min(3, Number(zone.intensity) || 1));
+      const radius = Math.max(800, Math.min(6500, Number(zone.radius_m) || (360 + (intensity * 190))));
       const circle = L.circle([latitude, longitude], {
-        radius: 360 + (intensity * 190),
+        radius,
         className: `community-zone community-zone-${intensity}`,
         color: "#ffbf00",
         weight: 1,
