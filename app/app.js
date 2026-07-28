@@ -91,6 +91,12 @@
   }
   function message(el, text, success = false) { el.textContent = text || ""; el.classList.toggle("success", success); }
   function toast(text) { const el = $("toast"); el.textContent = text; el.classList.remove("hidden"); clearTimeout(toast.timer); toast.timer = setTimeout(() => el.classList.add("hidden"), 3600); }
+  function withDeadline(promise, milliseconds = 9000) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("ParkSwap's live service took too long to respond. Please try again.")), milliseconds);
+      promise.then((value) => { clearTimeout(timer); resolve(value); }, (error) => { clearTimeout(timer); reject(error); });
+    });
+  }
   function saveSession(payload) {
     const user = payload?.data?.user_details || payload?.data?.user || payload?.user_details;
     if (!user?.auth_token) throw new Error("ParkSwap signed in but did not return a session. Please try again.");
@@ -408,10 +414,10 @@
       const mapCoords = state.exploreCoords || state.coords;
       const latitude = encodeURIComponent(mapCoords.latitude), longitude = encodeURIComponent(mapCoords.longitude);
       const [legacyResult, scheduledResult, spotterResult, zonesResult] = await Promise.allSettled([
-        api(`/v1/parking/list?latitude=${latitude}&longitude=${longitude}`),
-        api(`/v1/parking-network/scheduled-departures/nearby?latitude=${latitude}&longitude=${longitude}`),
-        api(`/v1/parking-network/spotter-reports/nearby?latitude=${latitude}&longitude=${longitude}`),
-        api(`/v1/parking/activity-zones?latitude=${latitude}&longitude=${longitude}`),
+        withDeadline(api(`/v1/parking/list?latitude=${latitude}&longitude=${longitude}`)),
+        withDeadline(api(`/v1/parking-network/scheduled-departures/nearby?latitude=${latitude}&longitude=${longitude}`)),
+        withDeadline(api(`/v1/parking-network/spotter-reports/nearby?latitude=${latitude}&longitude=${longitude}`)),
+        withDeadline(api(`/v1/parking/activity-zones?latitude=${latitude}&longitude=${longitude}`)),
       ]);
       if (legacyResult.status === "rejected" && scheduledResult.status === "rejected" && spotterResult.status === "rejected") throw legacyResult.reason;
       const payload = legacyResult.status === "fulfilled" ? legacyResult.value : {};
