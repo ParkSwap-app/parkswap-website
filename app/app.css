@@ -17,11 +17,11 @@
 .provider-button-slot>div,.provider-button-slot iframe{display:block!important;width:100%!important;max-width:100%!important}
 .apple-provider-mark{background:#fff;color:#111;border-color:#d7d7d7}
 .apple-provider-mark svg{width:19px;height:19px;display:block;fill:#111}
-.social-auth-button[data-social-provider="apple"]{height:48px;padding:4px;background:#202124;color:#fff;border:1px solid #3c4043;border-radius:13px;box-shadow:none;grid-template-columns:40px 1fr 40px}
-.social-auth-button[data-social-provider="apple"] .apple-provider-mark{width:36px;height:36px;justify-self:start;background:#fff;color:#111;border:0;border-radius:0}
-.social-auth-button[data-social-provider="apple"] .apple-provider-mark svg{width:18px;height:18px;fill:#111}
-.social-auth-button[data-social-provider="apple"] strong{font-size:14px;font-weight:500;text-align:center}
-.social-auth-button[data-social-provider="apple"]>b{visibility:hidden}
+.social-auth-button[data-social-provider="apple"]{height:48px;padding:0 13px;background:#f7f7f5;color:#111216;border:1px solid #383a40;border-radius:13px;box-shadow:none;grid-template-columns:30px 1fr 24px}
+.social-auth-button[data-social-provider="apple"] .apple-provider-mark{width:27px;height:27px;justify-self:start;background:#fff;color:#111;border:1px solid #dedede;border-radius:50%}
+.social-auth-button[data-social-provider="apple"] .apple-provider-mark svg{width:16px;height:16px;fill:#111}
+.social-auth-button[data-social-provider="apple"] strong{font-size:12px;font-weight:700;text-align:left}
+.social-auth-button[data-social-provider="apple"]>b{visibility:visible}
 .mode-soon{min-height:70px;background:#15171a;border-color:#49412a}
 .mode-soon .mode-icon{background:rgba(255,191,0,.1);color:var(--gold)}
 .mode-soon>b{background:#282a2f;color:var(--gold)}
@@ -41,3 +41,6 @@
 
 /* Keep the primary map control fully clear of the overlapping action sheet. */
 .recenter-button{z-index:650;bottom:48px;border-color:rgba(255,255,255,.16);background:rgba(9,10,12,.94);box-shadow:0 10px 28px rgba(0,0,0,.38)}
+
+/* Anonymous community density sits below live parking pins. */
+.destination-search{position:absolute;z-index:500;left:16px;right:16px;top:16px;display:flex;gap:8px;padding:7px;border:1px solid rgba(255,255,255,.14);border-radius:18px;background:rgba(9,10,12,.88);box-shadow:0 14px 36px rgba(0,0,0,.28);backdrop-filter:blur(18px)}.destination-search input{min-width:0;flex:1;border:0;background:transparent;color:#fff;padding:9px 10px;font:700 13px/1.2 Manrope,sans-serif;outline:0}.destination-search input::placeholder{color:rgba(255,255,255,.66)}.destination-search button{width:40px;height:40px;border:0;border-radius:13px;background:var(--gold);color:#111827;font-size:20px;font-weight:900;cursor:pointer}.destination-search button:disabled{opacity:.58;cursor:wait}.sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}.map-status{top:78px}.map-legend{position:absolute;z-index:500;left:16px;top:121px;display:flex;gap:11px;align-items:center;padding:8px 10px;border:1px solid rgba(255,255,255,.1);border-radius:12px;background:rgba(9,10,12,.78);backdrop-filter:blur(12px);color:#b7b9be;font-size:8px;font-weight:700}.map-legend span{display:flex;align-items:center;gap:5px;white-space:nowrap}.map-legend i{display:block;flex:0 0 auto}.legend-live{width:9px;height:9px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px rgba(42,210,135,.14)}.legend-zone{width:12px;height:12px;border-radius:50%;border:1px solid rgba(255,191,0,.75);background:rgba(255,191,0,.18)}.community-zone{transition:fill-opacity .2s ease,stroke-opacity .2s ease}.community-zone:hover{fill-opacity:.25!important;stroke-width:2}.zone-popup{display:grid;gap:5px;min-width:175px;color:#151515;font-family:Manrope,sans-serif}.zone-popup strong{font-size:13px}.zone-popup span{color:#8a6500;font-size:10px;font-weight:800}.zone-popup small{font-size:9px;line-height:1.45;color:#666}
