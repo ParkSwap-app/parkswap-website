@@ -1,4 +1,4 @@
-const CACHE = "parkswap-web-v15-destination-independent";
+const CACHE = "parkswap-web-v16-live-address";
 const SHELL = ["./", "app.css", "app.js", "vendor/leaflet/leaflet.css", "vendor/leaflet/leaflet.js", "manifest.webmanifest", "../parkswap-app-icon.png"];
 self.addEventListener("install", (event) => event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting())));
 self.addEventListener("activate", (event) => event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)))).then(() => self.clients.claim())));
