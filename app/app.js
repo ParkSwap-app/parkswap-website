@@ -56,7 +56,9 @@
     return value;
   }
   async function api(path, { method = "GET", data = null, auth = true, extraHeaders = null } = {}) {
-    const options = { method, headers: { ...headers(auth), ...(extraHeaders || {}) }, cache: "no-store" };
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 9000);
+    const options = { method, headers: { ...headers(auth), ...(extraHeaders || {}) }, cache: "no-store", signal: controller.signal };
     if (data) {
       const body = new FormData();
       Object.entries(data).forEach(([key, value]) => body.append(key, value == null ? "" : String(value)));
@@ -64,7 +66,10 @@
     }
     let response;
     try { response = await fetch(`${API}${path}`, options); }
-    catch { throw new Error("ParkSwap could not reach the service. Check your connection and try again."); }
+    catch (error) {
+      if (error?.name === "AbortError") throw new Error("ParkSwap's live service took too long to respond. Please try again.");
+      throw new Error("ParkSwap could not reach the service. Check your connection and try again.");
+    } finally { clearTimeout(timeout); }
     let payload;
     try { payload = await response.json(); } catch { throw new Error("ParkSwap received an unexpected response. Please try again."); }
     const status = Number(payload.status_code || response.status);
