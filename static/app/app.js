@@ -1,5 +1,7 @@
 (() => {
-  const API = "https://old.parkswap.com/api";
+  // The web app and native clients use the production application host. The
+  // legacy hostname can return a certificate or HTML error in modern browsers.
+  const API = "https://app.parkswap.com/api";
   const state = {
     token: localStorage.getItem("parkswap_token") || "",
     user: safeParse(localStorage.getItem("parkswap_user")) || null,
@@ -27,6 +29,7 @@
     exploreCoords: null,
     exploreLabel: "",
     exploreMarker: null,
+    destinationResults: [],
     searchOnlyMode: false,
     scheduleTimer: null,
   };
@@ -74,10 +77,14 @@
       throw new Error("ParkSwap could not reach the service. Check your connection and try again.");
     }
     let payload;
-    try { payload = await response.json(); }
-    catch (error) {
+    try {
+      const text = (await response.text()).replace(/^\uFEFF/, "").trim();
+      payload = text ? JSON.parse(text) : {};
+    } catch (error) {
       if (error?.name === "AbortError") throw new Error("ParkSwap's live service took too long to respond. Please try again.");
-      throw new Error("ParkSwap received an unexpected response. Please try again.");
+      throw new Error(response.ok
+        ? "ParkSwap's live service returned an invalid response. Please try again."
+        : "ParkSwap's live service is reconnecting. Please try again in a moment.");
     } finally { clearTimeout(timeout); }
     const status = Number(payload.status_code || response.status);
     if (!response.ok || (status && status >= 400)) {
@@ -457,6 +464,45 @@
       if (showErrors) toast(error.message || "Live parking is reconnecting. Please try again.");
     }
   }
+  function closeDestinationResults() {
+    state.destinationResults = [];
+    const results = $("destinationResults");
+    results.replaceChildren();
+    results.classList.add("hidden");
+  }
+  function applyDestination(match) {
+    const latitude = Number(match?.lat), longitude = Number(match?.lon);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+    state.exploreCoords = { latitude, longitude };
+    state.exploreLabel = String(match?.display_name || "Selected destination").split(",").slice(0, 4).join(",");
+    state.map?.setView([latitude, longitude], 15);
+    if (state.exploreMarker) state.exploreMarker.remove();
+    if (state.map && window.L) {
+      state.exploreMarker = L.marker([latitude, longitude], {
+        icon: L.divIcon({ className: "destination-pin", html: "<span>⌖</span>", iconSize: [32, 32], iconAnchor: [16, 16] }),
+      }).addTo(state.map).bindPopup(`<strong>Parking search area</strong><br>${escapeHtml(state.exploreLabel)}`).openPopup();
+    }
+    $("destinationInput").value = state.exploreLabel;
+    $("locationStatus").textContent = `Exploring ${state.exploreLabel}`;
+    closeDestinationResults();
+    loadSpots().then(() => toast("Showing live opportunities and community activity near this address."));
+  }
+  function renderDestinationResults(matches) {
+    const results = $("destinationResults");
+    results.replaceChildren();
+    state.destinationResults = matches;
+    matches.forEach((match, index) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "destination-result";
+      const parts = String(match.display_name || "U.S. destination").split(",").map((part) => part.trim()).filter(Boolean);
+      button.innerHTML = `<span>⌖</span><span><strong>${escapeHtml(parts.slice(0, 2).join(", "))}</strong><small>${escapeHtml(parts.slice(2, 5).join(", "))}</small></span><b>→</b>`;
+      button.setAttribute("aria-label", `Choose ${String(match.display_name || `result ${index + 1}`)}`);
+      button.addEventListener("click", () => applyDestination(match));
+      results.appendChild(button);
+    });
+    results.classList.toggle("hidden", !matches.length);
+  }
   async function exploreDestination(query) {
     const value = String(query || "").trim();
     if (value.length < 3) return toast("Enter a neighborhood, address, or destination.");
@@ -467,21 +513,13 @@
       const response = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=us&addressdetails=1&limit=5&q=${search}`, { headers: { Accept: "application/json" } });
       if (!response.ok) throw new Error("Destination search is temporarily unavailable.");
       const results = await response.json();
-      const match = Array.isArray(results) ? results[0] : null;
-      const latitude = Number(match?.lat), longitude = Number(match?.lon);
-      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) throw new Error("We could not find that U.S. address or destination. Add a city and state, then try again.");
-      state.exploreCoords = { latitude, longitude };
-      state.exploreLabel = String(match?.display_name || value).split(",").slice(0, 3).join(",");
-      state.map?.setView([latitude, longitude], 14);
-      if (state.exploreMarker) state.exploreMarker.remove();
-      if (state.map && window.L) {
-        state.exploreMarker = L.marker([latitude, longitude], {
-          icon: L.divIcon({ className: "destination-pin", html: "<span>⌖</span>", iconSize: [32, 32], iconAnchor: [16, 16] }),
-        }).addTo(state.map).bindPopup(`<strong>Parking search area</strong><br>${escapeHtml(state.exploreLabel)}`);
-      }
-      $("locationStatus").textContent = `Exploring ${state.exploreLabel}`;
-      await loadSpots();
-      toast("Showing live opportunities and community activity near this address.");
+      const matches = Array.isArray(results)
+        ? results.filter((match) => Number.isFinite(Number(match?.lat)) && Number.isFinite(Number(match?.lon))).slice(0, 5)
+        : [];
+      if (!matches.length) throw new Error("We could not find that U.S. address or destination. Add a street, city, state, or ZIP code and try again.");
+      renderDestinationResults(matches);
+      $("locationStatus").textContent = matches.length === 1 ? "Choose the matching address" : `Choose from ${matches.length} matching places`;
+      if (matches.length === 1) applyDestination(matches[0]);
     } catch (error) { toast(error.message || "Destination search is temporarily unavailable."); }
     finally { setBusy(button, false); }
   }
@@ -760,6 +798,7 @@
 
   $("lookButton").addEventListener("click", () => setMode(1)); $("leaveButton").addEventListener("click", () => setMode(2)); $("soonButton").addEventListener("click", openScheduleModal); $("stopButton").addEventListener("click", stopMode);
   $("destinationForm").addEventListener("submit", (event) => { event.preventDefault(); exploreDestination($("destinationInput").value); });
+  $("destinationInput").addEventListener("input", closeDestinationResults);
   $("spotterButton").addEventListener("click", reportSpotterOpportunity); $("confirmSpotterButton").addEventListener("click", confirmSpotterOpportunity); $("setupPayoutButton").addEventListener("click", setupPayouts);
   $("recenterButton").addEventListener("click", () => locate({ userInitiated: true })); $("claimButton").addEventListener("click", claimSelected); $("editVehicleButton").addEventListener("click", openVehicleModal);
   $("enableNotifications").addEventListener("click", enableNotifications); $("installButton").addEventListener("click", installApp); $("installFromProfile").addEventListener("click", installApp);
