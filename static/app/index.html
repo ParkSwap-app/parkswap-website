@@ -22,7 +22,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css?v=1.9.4">
-  <link rel="stylesheet" href="app.css?v=20260727-auth-unified-6">
+  <link rel="stylesheet" href="app.css?v=20260728-live-address-1">
   <title>ParkSwap</title>
 </head>
 <body>
@@ -96,11 +96,11 @@
             <div id="map" aria-label="Nearby parking activity map"></div>
             <div class="map-shade"></div>
             <form id="destinationForm" class="destination-search" role="search">
-              <label class="sr-only" for="destinationInput">Search a parking destination</label>
-              <input id="destinationInput" type="search" autocomplete="street-address" placeholder="Explore parking near a destination" maxlength="120">
+              <label class="sr-only" for="destinationInput">Search any U.S. address or parking destination</label>
+              <input id="destinationInput" type="search" autocomplete="street-address" placeholder="Enter an address, city, or destination" maxlength="160">
               <button id="destinationButton" type="submit" aria-label="Search destination">→</button>
             </form>
-            <div class="map-legend" aria-label="Map legend"><span><i class="legend-live"></i>Live opportunity</span><span><i class="legend-zone"></i>Community activity</span></div>
+            <div class="map-legend" aria-label="Map legend"><span><i class="legend-live"></i>Live opportunity</span><span><i class="legend-zone"></i>Community activity · hot zone</span></div>
             <button id="recenterButton" class="recenter-button" aria-label="Center map on my location">⌖</button>
             <div class="map-status"><i></i><span id="locationStatus">Finding your location…</span></div>
           </div>
@@ -244,6 +244,6 @@
 
   <div id="toast" class="toast hidden" role="status"></div>
   <script src="vendor/leaflet/leaflet.js?v=1.9.4"></script>
-  <script src="app.js?v=20260727-auth-unified-6" defer></script>
+  <script src="app.js?v=20260728-live-address-1" defer></script>
 </body>
 </html>
