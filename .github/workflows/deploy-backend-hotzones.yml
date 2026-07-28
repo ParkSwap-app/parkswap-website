@@ -1,0 +1,67 @@
+name: Deploy ParkSwap hot-zone backend
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: parkswap-production-backend
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assemble encrypted approved files
+        env:
+          ROUTES_B64: ${{ secrets.HOTZONE_ROUTES_B64 }}
+          CONTROLLER_B64: ${{ secrets.HOTZONE_CONTROLLER_B64 }}
+          MODEL_B64: ${{ secrets.HOTZONE_MODEL_B64 }}
+        run: |
+          set -eu
+          mkdir -p release/application/config
+          mkdir -p release/application/modules/api_v1/controllers
+          mkdir -p release/application/modules/api_v1/models
+          printf '%s' "$ROUTES_B64" | base64 --decode > release/application/config/routes.php
+          printf '%s' "$CONTROLLER_B64" | base64 --decode > release/application/modules/api_v1/controllers/Parking.php
+          printf '%s' "$MODEL_B64" | base64 --decode > release/application/modules/api_v1/models/Parking_model.php
+          test -s release/application/config/routes.php
+          test -s release/application/modules/api_v1/controllers/Parking.php
+          test -s release/application/modules/api_v1/models/Parking_model.php
+
+      - name: Upload validated endpoint files
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.PARKSWAP_HOST }}
+          username: ${{ secrets.PARKSWAP_SSH_USER }}
+          password: ${{ secrets.PARKSWAP_SSH_PASSWORD }}
+          source: "release/application"
+          target: "/tmp/parkswap-backend-release"
+          strip_components: 1
+          overwrite: true
+
+      - name: Validate and activate endpoint
+        uses: appleboy/ssh-action@v1
+        env:
+          SUDO_PASSWORD: ${{ secrets.PARKSWAP_SUDO_PASSWORD }}
+        with:
+          host: ${{ secrets.PARKSWAP_HOST }}
+          username: ${{ secrets.PARKSWAP_SSH_USER }}
+          password: ${{ secrets.PARKSWAP_SSH_PASSWORD }}
+          envs: SUDO_PASSWORD
+          script: |
+            set -eu
+            release=/tmp/parkswap-backend-release/application
+            live=/var/www/html/backend-api/application
+            php -l "$release/config/routes.php"
+            php -l "$release/modules/api_v1/controllers/Parking.php"
+            php -l "$release/modules/api_v1/models/Parking_model.php"
+            stamp="$(date +%Y%m%d%H%M%S)"
+            printf '%s\n' "$SUDO_PASSWORD" | sudo -S cp -a "$live/config/routes.php" "$live/config/routes.php.backup-$stamp"
+            printf '%s\n' "$SUDO_PASSWORD" | sudo -S cp -a "$live/modules/api_v1/controllers/Parking.php" "$live/modules/api_v1/controllers/Parking.php.backup-$stamp"
+            printf '%s\n' "$SUDO_PASSWORD" | sudo -S cp -a "$live/modules/api_v1/models/Parking_model.php" "$live/modules/api_v1/models/Parking_model.php.backup-$stamp"
+            printf '%s\n' "$SUDO_PASSWORD" | sudo -S cp "$release/config/routes.php" "$live/config/routes.php"
+            printf '%s\n' "$SUDO_PASSWORD" | sudo -S cp "$release/modules/api_v1/controllers/Parking.php" "$live/modules/api_v1/controllers/Parking.php"
+            printf '%s\n' "$SUDO_PASSWORD" | sudo -S cp "$release/modules/api_v1/models/Parking_model.php" "$live/modules/api_v1/models/Parking_model.php"
+            printf '%s\n' "$SUDO_PASSWORD" | sudo -S nginx -t
+            printf '%s\n' "$SUDO_PASSWORD" | sudo -S systemctl reload nginx
+            rm -rf /tmp/parkswap-backend-release
