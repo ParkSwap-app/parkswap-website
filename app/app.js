@@ -320,11 +320,8 @@
     $("map").closest(".map-wrap").classList.remove("manual-location");
     locationModal.classList.add("hidden");
     $("locationStatus").textContent = manual ? "Location selected on map" : (Number(accuracy) < 100 ? "Location ready" : "Approximate location");
-    if (state.map) {
-      state.map.setView([state.coords.latitude, state.coords.longitude], 15);
-      if (state.userMarker) state.userMarker.remove();
-      state.userMarker = L.marker([state.coords.latitude, state.coords.longitude], { icon: L.divIcon({ className: "user-pin", iconSize: [18, 18] }) }).addTo(state.map);
-    }
+    if (state.map) state.map.setView([state.coords.latitude, state.coords.longitude], 15);
+    renderUserMarker();
     loadSpots(false);
     if (manual) toast("Location selected. Continue with your parking action.");
     if (state.pendingAction) setTimeout(runPendingAction, 150);
@@ -466,6 +463,7 @@
       }});
       state.activeScheduled = payload?.data?.scheduled_departure || null;
       scheduleModal.classList.add("hidden");
+      renderMode();
       toast(`Departure scheduled for about ${minutes} minutes from now.`);
       await loadSpots(false);
     } catch (error) {
@@ -487,6 +485,7 @@
   }
   function renderMode() {
     const active = $("activeMode"), stop = $("stopButton");
+    renderUserMarker();
     if (!state.mode && state.activeScheduled?.local_reminder) {
       const due = new Date(state.activeScheduled.scheduled_time).getTime() <= Date.now();
       active.classList.remove("hidden"); stop.classList.remove("hidden");
@@ -496,6 +495,22 @@
     if (!state.mode) { active.classList.add("hidden"); stop.classList.add("hidden"); return; }
     active.classList.remove("hidden"); stop.classList.remove("hidden");
     active.textContent = state.mode === 1 ? "Looking is active. ParkSwap is refreshing nearby departures automatically." : "Your spot is live. Stay safely parked while another driver responds.";
+  }
+  function userMarkerClass() {
+    if (state.mode === 1) return "user-pin looking-pin";
+    if (state.mode === 2) return "user-pin leaving-pin";
+    if (state.activeScheduled) return "user-pin scheduled-user-pin";
+    return "user-pin";
+  }
+  function renderUserMarker() {
+    if (!state.coords || !state.map || !window.L) return;
+    if (state.userMarker) state.userMarker.remove();
+    state.userMarker = L.marker([state.coords.latitude, state.coords.longitude], {
+      icon: L.divIcon({ className: userMarkerClass(), iconSize: [20, 20] }),
+    }).addTo(state.map);
+    if (state.mode === 1) $("locationStatus").textContent = "Looking for parking";
+    else if (state.mode === 2) $("locationStatus").textContent = "Your departure is live";
+    else if (state.activeScheduled) $("locationStatus").textContent = "Leaving Soon reminder set";
   }
   function scheduleLocalReminder() {
     clearTimeout(state.scheduleTimer);
