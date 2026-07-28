@@ -8,11 +8,14 @@
     coords: null,
     mode: Number(localStorage.getItem("parkswap_mode")) || 0,
     spots: [],
+    activityZones: [],
     activeScheduled: safeParse(localStorage.getItem("parkswap_scheduled_departure")) || null,
+    activeSpotter: safeParse(localStorage.getItem("parkswap_spotter_report")) || null,
     selectedSpot: null,
     map: null,
     userMarker: null,
     spotMarkers: [],
+    activityZoneLayers: [],
     installPrompt: null,
     refreshTimer: null,
     socialConfig: null,
@@ -32,6 +35,7 @@
   const spotModal = $("spotModal");
   const scheduleModal = $("scheduleModal");
   const locationModal = $("locationModal");
+  const spotterModal = $("spotterModal");
 
   function safeParse(value) { try { return value ? JSON.parse(value) : null; } catch { return null; } }
   function deviceId() {
@@ -50,8 +54,8 @@
     if (withAuth && state.token) value.Authorization = `Bearer ${state.token}`;
     return value;
   }
-  async function api(path, { method = "GET", data = null, auth = true } = {}) {
-    const options = { method, headers: headers(auth), cache: "no-store" };
+  async function api(path, { method = "GET", data = null, auth = true, extraHeaders = null } = {}) {
+    const options = { method, headers: { ...headers(auth), ...(extraHeaders || {}) }, cache: "no-store" };
     if (data) {
       const body = new FormData();
       Object.entries(data).forEach(([key, value]) => body.append(key, value == null ? "" : String(value)));
@@ -93,10 +97,12 @@
     });
     $("accountRole").textContent = state.accountRole === "spotter" ? "Spotter" : "Driver";
     $("vehicleCard").classList.toggle("hidden", state.accountRole === "spotter");
+    $("driverActions").classList.toggle("hidden", state.accountRole === "spotter");
+    $("spotterActions").classList.toggle("hidden", state.accountRole !== "spotter");
   }
   function signOut(showToast = true) {
     state.token = ""; state.user = null; state.vehicle = null; state.mode = 0; state.spots = []; state.accountRole = "driver";
-    ["parkswap_token", "parkswap_user", "parkswap_vehicle", "parkswap_mode", "parkswap_account_role"].forEach((key) => localStorage.removeItem(key));
+    ["parkswap_token", "parkswap_user", "parkswap_vehicle", "parkswap_mode", "parkswap_account_role", "parkswap_scheduled_departure", "parkswap_spotter_report"].forEach((key) => localStorage.removeItem(key));
     setAccountRole("driver");
     clearInterval(state.refreshTimer); state.refreshTimer = null;
     mainView.classList.add("hidden"); authView.classList.remove("hidden");
@@ -257,12 +263,36 @@
     $("profileName").textContent = state.user?.full_name || (state.accountRole === "spotter" ? "ParkSwap Spotter" : "ParkSwap Driver");
     $("profileEmail").textContent = state.user?.email || "";
     renderVehicle(); initializeMap(); renderMode();
+    restoreNetworkState();
     scheduleLocalReminder();
     refreshMapSize();
     setTimeout(refreshMapSize, 250);
     setTimeout(refreshMapSize, 900);
     locate();
     clearInterval(state.refreshTimer); state.refreshTimer = setInterval(() => { if (state.coords) loadSpots(false); }, 15000);
+  }
+  async function restoreNetworkState() {
+    try {
+      const payload = await api("/v1/parking-network/scheduled-departures/active");
+      const active = payload?.data?.scheduled_departure;
+      if (active?.id) {
+        state.activeScheduled = active;
+        localStorage.setItem("parkswap_scheduled_departure", JSON.stringify(active));
+        renderMode();
+      }
+    } catch {
+      // Existing clients and disabled rollouts continue to use the local reminder.
+    }
+    if (state.accountRole === "spotter") {
+      try {
+        const payload = await api("/v1/parking-network/spotter-reports/active");
+        const active = payload?.data?.spotter_report;
+        if (active?.id) {
+          state.activeSpotter = active;
+          localStorage.setItem("parkswap_spotter_report", JSON.stringify(active));
+        }
+      } catch {}
+    }
   }
   function refreshMapSize() {
     if (!state.map) return;
@@ -313,6 +343,7 @@
     if (action === "look") setMode(1);
     else if (action === "leave") setMode(2);
     else if (action === "schedule") openScheduleModal();
+    else if (action === "spotter") reportSpotterOpportunity();
   }
   function applyCoordinates(latitude, longitude, accuracy, manual = false) {
     state.coords = { latitude: Number(latitude), longitude: Number(longitude), accuracy: accuracy == null ? "" : Number(accuracy), manual };
@@ -320,11 +351,8 @@
     $("map").closest(".map-wrap").classList.remove("manual-location");
     locationModal.classList.add("hidden");
     $("locationStatus").textContent = manual ? "Location selected on map" : (Number(accuracy) < 100 ? "Location ready" : "Approximate location");
-    if (state.map) {
-      state.map.setView([state.coords.latitude, state.coords.longitude], 15);
-      if (state.userMarker) state.userMarker.remove();
-      state.userMarker = L.marker([state.coords.latitude, state.coords.longitude], { icon: L.divIcon({ className: "user-pin", iconSize: [18, 18] }) }).addTo(state.map);
-    }
+    if (state.map) state.map.setView([state.coords.latitude, state.coords.longitude], 15);
+    renderUserMarker();
     loadSpots(false);
     if (manual) toast("Location selected. Continue with your parking action.");
     if (state.pendingAction) setTimeout(runPendingAction, 150);
@@ -367,19 +395,26 @@
     if (!state.coords || !state.token) return;
     try {
       const latitude = encodeURIComponent(state.coords.latitude), longitude = encodeURIComponent(state.coords.longitude);
-      const [legacyResult, scheduledResult] = await Promise.allSettled([
+      const [legacyResult, scheduledResult, spotterResult, zonesResult] = await Promise.allSettled([
         api(`/v1/parking/list?latitude=${latitude}&longitude=${longitude}`),
         api(`/v1/parking-network/scheduled-departures/nearby?latitude=${latitude}&longitude=${longitude}`),
+        api(`/v1/parking-network/spotter-reports/nearby?latitude=${latitude}&longitude=${longitude}`),
+        api(`/v1/parking/activity-zones?latitude=${latitude}&longitude=${longitude}`),
       ]);
-      if (legacyResult.status === "rejected" && scheduledResult.status === "rejected") throw legacyResult.reason;
+      if (legacyResult.status === "rejected" && scheduledResult.status === "rejected" && spotterResult.status === "rejected") throw legacyResult.reason;
       const payload = legacyResult.status === "fulfilled" ? legacyResult.value : {};
       const data = payload?.data || {};
       const incoming = Array.isArray(data.parking_list) ? data.parking_list : [];
       const scheduledData = scheduledResult.status === "fulfilled" ? scheduledResult.value?.data : {};
       const scheduled = Array.isArray(scheduledData?.scheduled_departures)
         ? scheduledData.scheduled_departures.map((item) => ({ ...item, opportunity_type: "scheduled" })) : [];
+      const spotterData = spotterResult.status === "fulfilled" ? spotterResult.value?.data : {};
+      const spotter = Array.isArray(spotterData?.spotter_reports)
+        ? spotterData.spotter_reports.map((item) => ({ ...item, opportunity_type: "spotter" })) : [];
+      const zonesData = zonesResult.status === "fulfilled" ? zonesResult.value?.data : {};
+      state.activityZones = Array.isArray(zonesData?.activity_zones) ? zonesData.activity_zones : [];
       const previousIds = new Set(state.spots.map(spotId));
-      state.spots = [...incoming, ...scheduled].filter((item) => {
+      state.spots = [...incoming, ...scheduled, ...spotter].filter((item) => {
         const lat = Number(field(item, "latitude", "profile_latitude"));
         const lon = Number(field(item, "longitude", "profile_longitude"));
         return Number.isFinite(lat) && Number.isFinite(lon);
@@ -399,13 +434,33 @@
     return 3958.8 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
   }
   function renderSpots() {
-    $("nearbyCount").textContent = state.spots.length === 1 ? "1 active spot" : `${state.spots.length} active spots`;
+    $("nearbyCount").textContent = state.spots.length
+      ? (state.spots.length === 1 ? "1 live opportunity" : `${state.spots.length} live opportunities`)
+      : (state.activityZones.length ? "Community nearby" : "No activity yet");
     state.spotMarkers.forEach((marker) => marker.remove()); state.spotMarkers = [];
+    state.activityZoneLayers.forEach((layer) => layer.remove()); state.activityZoneLayers = [];
+    if (state.map && window.L) state.activityZones.forEach((zone) => {
+      const latitude = Number(zone.latitude), longitude = Number(zone.longitude);
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+      const intensity = Math.max(1, Math.min(3, Number(zone.intensity) || 1));
+      const circle = L.circle([latitude, longitude], {
+        radius: 360 + (intensity * 190),
+        className: `community-zone community-zone-${intensity}`,
+        color: "#ffbf00",
+        weight: 1,
+        fillColor: "#ffbf00",
+        fillOpacity: .08 + (intensity * .035),
+        interactive: true,
+      }).addTo(state.map);
+      circle.bindPopup(`<div class="zone-popup"><strong>ParkSwap community</strong><span>${escapeHtml(zone.member_range || "Active community")}</span><small>Approximate, anonymous historical activity — not a live parking spot.</small></div>`);
+      state.activityZoneLayers.push(circle);
+    });
     if (state.map && window.L) state.spots.forEach((item) => {
       const lat = Number(field(item, "latitude", "profile_latitude")), lon = Number(field(item, "longitude", "profile_longitude"));
       if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
       const scheduled = item.opportunity_type === "scheduled" || item.status === "pending" || item.status === "delayed";
-      const marker = L.marker([lat, lon], { icon: L.divIcon({ className: `parking-pin${scheduled ? " scheduled-pin" : ""}`, html: `<span>${scheduled ? "◷" : "P"}</span>`, iconSize: [36, 36], iconAnchor: [18, 36] }) }).addTo(state.map);
+      const spotter = item.opportunity_type === "spotter";
+      const marker = L.marker([lat, lon], { icon: L.divIcon({ className: `parking-pin${scheduled || spotter ? " scheduled-pin" : ""}`, html: `<span>${scheduled ? "◷" : spotter ? "S" : "P"}</span>`, iconSize: [36, 36], iconAnchor: [18, 36] }) }).addTo(state.map);
       marker.on("click", () => openSpot(item)); state.spotMarkers.push(marker);
     });
     const list = $("activityList");
@@ -415,7 +470,8 @@
       const lat = field(item, "latitude", "profile_latitude"), lon = field(item, "longitude", "profile_longitude"), miles = distanceMiles(lat, lon);
       const button = document.createElement("button"); button.className = "activity-card";
       const scheduled = item.opportunity_type === "scheduled" || item.status === "pending" || item.status === "delayed";
-      button.innerHTML = `<span class="activity-icon">${scheduled ? "◷" : "P"}</span><span><strong>${scheduled ? "Leaving soon — not confirmed" : "Driver leaving a spot"}</strong><small>${escapeHtml(field(item, "location", "address") || "Nearby parking activity")}</small></span><b>${miles == null ? (scheduled ? "Soon" : "Live") : miles < .1 ? "Nearby" : `${miles.toFixed(1)} mi`}</b>`;
+      const spotter = item.opportunity_type === "spotter";
+      button.innerHTML = `<span class="activity-icon">${scheduled ? "◷" : spotter ? "S" : "P"}</span><span><strong>${scheduled ? "Leaving soon — not confirmed" : spotter ? "Unverified — reported by Spotter" : "Driver leaving a spot"}</strong><small>${escapeHtml(field(item, "location", "address") || "Nearby parking activity")}</small></span><b>${miles == null ? (scheduled ? "Soon" : "Live") : miles < .1 ? "Nearby" : `${miles.toFixed(1)} mi`}</b>`;
       button.addEventListener("click", () => openSpot(item)); list.appendChild(button);
     });
   }
@@ -426,8 +482,9 @@
     $("spotAddress").textContent = field(item, "location", "address") || "Nearby parking activity";
     $("spotDistance").textContent = miles == null ? "Nearby" : miles < .1 ? "Nearby" : `${miles.toFixed(1)} mi`;
     const scheduled = item.opportunity_type === "scheduled" || item.status === "pending" || item.status === "delayed";
-    $("spotTitle").textContent = scheduled ? "Driver leaving soon" : "Driver leaving nearby";
-    $("spotUpdated").textContent = scheduled ? "Not confirmed" : "Live";
+    const spotter = item.opportunity_type === "spotter";
+    $("spotTitle").textContent = scheduled ? "Driver leaving soon" : spotter ? "Unverified spotter report" : "Driver leaving nearby";
+    $("spotUpdated").textContent = scheduled ? "Not confirmed" : spotter ? "Unverified" : "Live";
     $("directionsButton").href = `https://maps.apple.com/?daddr=${encodeURIComponent(lat)},${encodeURIComponent(lon)}&dirflg=d`;
     $("claimButton").disabled = state.mode !== 1 || scheduled;
     $("claimButton").querySelector("span").textContent = scheduled ? "Waiting for confirmation" : state.mode === 1 ? "I'm heading there" : "Start looking to claim";
@@ -437,7 +494,12 @@
     if (!state.coords) { state.pendingAction = type === 1 ? "look" : "leave"; openLocationModal(); return; }
     const button = type === 1 ? $("lookButton") : $("leaveButton"); setBusy(button, true, type === 1 ? "Starting search…" : "Sharing spot…");
     try {
-      await api("/v1/parking/request", { method: "POST", data: { location: "Current location", latitude: state.coords.latitude, longitude: state.coords.longitude, type } });
+      if (type === 2 && state.activeScheduled?.id && !state.activeScheduled.local_reminder) {
+        await api(`/v1/parking-network/scheduled-departures/${encodeURIComponent(state.activeScheduled.id)}/confirm`, { method: "POST" });
+        state.activeScheduled = null; localStorage.removeItem("parkswap_scheduled_departure");
+      } else {
+        await api("/v1/parking/request", { method: "POST", data: { location: "Current location", latitude: state.coords.latitude, longitude: state.coords.longitude, type } });
+      }
       state.mode = type; localStorage.setItem("parkswap_mode", String(type)); renderMode(); await loadSpots(false);
       toast(type === 1 ? "Looking for nearby parking activity." : "Your live departure was shared with nearby drivers.");
     } catch (error) {
@@ -463,9 +525,12 @@
         longitude: state.coords.longitude,
         location_accuracy: state.coords.accuracy || "",
         scheduled_time: scheduledTime,
+        idempotency_key: `scheduled-${deviceId()}-${Date.now()}`,
       }});
       state.activeScheduled = payload?.data?.scheduled_departure || null;
+      if (state.activeScheduled) localStorage.setItem("parkswap_scheduled_departure", JSON.stringify(state.activeScheduled));
       scheduleModal.classList.add("hidden");
+      renderMode();
       toast(`Departure scheduled for about ${minutes} minutes from now.`);
       await loadSpots(false);
     } catch (error) {
@@ -478,6 +543,13 @@
     finally { setBusy(button, false); }
   });
   async function stopMode() {
+    if (!state.mode && state.activeScheduled?.id && !state.activeScheduled.local_reminder) {
+      try {
+        await api(`/v1/parking-network/scheduled-departures/${encodeURIComponent(state.activeScheduled.id)}/cancel`, { method: "POST" });
+        state.activeScheduled = null; localStorage.removeItem("parkswap_scheduled_departure"); renderMode(); toast("Leaving Soon cancelled.");
+      } catch (error) { toast(error.message); }
+      return;
+    }
     if (!state.mode && state.activeScheduled?.local_reminder) {
       state.activeScheduled = null; localStorage.removeItem("parkswap_scheduled_departure"); clearTimeout(state.scheduleTimer); renderMode(); toast("Leaving Soon reminder cancelled."); return;
     }
@@ -487,6 +559,7 @@
   }
   function renderMode() {
     const active = $("activeMode"), stop = $("stopButton");
+    renderUserMarker();
     if (!state.mode && state.activeScheduled?.local_reminder) {
       const due = new Date(state.activeScheduled.scheduled_time).getTime() <= Date.now();
       active.classList.remove("hidden"); stop.classList.remove("hidden");
@@ -496,6 +569,22 @@
     if (!state.mode) { active.classList.add("hidden"); stop.classList.add("hidden"); return; }
     active.classList.remove("hidden"); stop.classList.remove("hidden");
     active.textContent = state.mode === 1 ? "Looking is active. ParkSwap is refreshing nearby departures automatically." : "Your spot is live. Stay safely parked while another driver responds.";
+  }
+  function userMarkerClass() {
+    if (state.mode === 1) return "user-pin looking-pin";
+    if (state.mode === 2) return "user-pin leaving-pin";
+    if (state.activeScheduled) return "user-pin scheduled-user-pin";
+    return "user-pin";
+  }
+  function renderUserMarker() {
+    if (!state.coords || !state.map || !window.L) return;
+    if (state.userMarker) state.userMarker.remove();
+    state.userMarker = L.marker([state.coords.latitude, state.coords.longitude], {
+      icon: L.divIcon({ className: userMarkerClass(), iconSize: [20, 20] }),
+    }).addTo(state.map);
+    if (state.mode === 1) $("locationStatus").textContent = "Looking for parking";
+    else if (state.mode === 2) $("locationStatus").textContent = "Your departure is live";
+    else if (state.activeScheduled) $("locationStatus").textContent = "Leaving Soon reminder set";
   }
   function scheduleLocalReminder() {
     clearTimeout(state.scheduleTimer);
@@ -550,6 +639,37 @@
     if (!("Notification" in window)) { toast("Notifications are not supported by this browser."); return; }
     const result = await Notification.requestPermission(); toast(result === "granted" ? "Parking alerts are enabled while ParkSwap is open." : "Notifications were not enabled.");
   }
+  function reportSpotterOpportunity() {
+    if (!state.coords) { state.pendingAction = "spotter"; openLocationModal(); return; }
+    spotterModal.classList.remove("hidden");
+  }
+  async function confirmSpotterOpportunity() {
+    const button = $("confirmSpotterButton"); setBusy(button, true, "Reporting…");
+    try {
+      const payload = await api("/v1/parking-network/spotter-reports", { method: "POST", data: {
+        latitude: state.coords.latitude,
+        longitude: state.coords.longitude,
+        location_accuracy: state.coords.accuracy || "",
+        legal_public_space_confirmed: 1,
+        idempotency_key: `spotter-${deviceId()}-${Date.now()}`,
+      }});
+      state.activeSpotter = payload?.data?.spotter_report || null;
+      if (state.activeSpotter) localStorage.setItem("parkswap_spotter_report", JSON.stringify(state.activeSpotter));
+      spotterModal.classList.add("hidden");
+      toast("Spot reported as unverified. ParkSwap will expire it automatically.");
+      await loadSpots(false);
+    } catch (error) { toast(error.message); }
+    finally { setBusy(button, false); }
+  }
+  async function setupPayouts() {
+    const button = $("setupPayoutButton"); setBusy(button, true, "Opening Stripe…");
+    try {
+      const payload = await api("/v1/payment/account-verification", { method: "PUT" });
+      const link = payload?.data?.stripe_account_link?.url || payload?.data?.stripe_account_link;
+      if (!link || !/^https:\/\/(connect\.)?stripe\.com\//i.test(String(link))) throw new Error("Secure payout setup is temporarily unavailable.");
+      window.location.assign(String(link));
+    } catch (error) { toast(error.message); setBusy(button, false); }
+  }
   function notifyNewSpot(count) {
     if (Notification.permission === "granted" && document.hidden) new Notification("ParkSwap", { body: `${count} new parking ${count === 1 ? "opportunity" : "opportunities"} nearby.`, icon: "icon-192.png" });
     $("alertBadge").textContent = String(count); $("alertBadge").classList.remove("hidden");
@@ -558,6 +678,7 @@
   window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); state.installPrompt = event; $("installButton").classList.remove("hidden"); });
 
   $("lookButton").addEventListener("click", () => setMode(1)); $("leaveButton").addEventListener("click", () => setMode(2)); $("soonButton").addEventListener("click", openScheduleModal); $("stopButton").addEventListener("click", stopMode);
+  $("spotterButton").addEventListener("click", reportSpotterOpportunity); $("confirmSpotterButton").addEventListener("click", confirmSpotterOpportunity); $("setupPayoutButton").addEventListener("click", setupPayouts);
   $("recenterButton").addEventListener("click", () => locate({ userInitiated: true })); $("claimButton").addEventListener("click", claimSelected); $("editVehicleButton").addEventListener("click", openVehicleModal);
   $("enableNotifications").addEventListener("click", enableNotifications); $("installButton").addEventListener("click", installApp); $("installFromProfile").addEventListener("click", installApp);
   $("retryLocationButton").addEventListener("click", () => locate({ userInitiated: true }));
@@ -565,7 +686,7 @@
   document.querySelectorAll("[data-close-location]").forEach((el) => el.addEventListener("click", () => { locationModal.classList.add("hidden"); state.pendingAction = null; }));
   $("signOutButton").addEventListener("click", () => signOut()); $("alertsButton").addEventListener("click", () => { $("alertBadge").classList.add("hidden"); showPanel("activityPanel"); });
   document.querySelectorAll('input[name="account_role"]').forEach((input) => input.addEventListener("change", () => setAccountRole(input.value)));
-  document.querySelectorAll("[data-close-modal]").forEach((el) => el.addEventListener("click", () => { vehicleModal.classList.add("hidden"); spotModal.classList.add("hidden"); scheduleModal.classList.add("hidden"); }));
+  document.querySelectorAll("[data-close-modal]").forEach((el) => el.addEventListener("click", () => { vehicleModal.classList.add("hidden"); spotModal.classList.add("hidden"); scheduleModal.classList.add("hidden"); spotterModal.classList.add("hidden"); }));
   document.querySelectorAll(".modal-close").forEach((el) => el.addEventListener("click", () => el.closest(".modal").classList.add("hidden")));
   document.querySelectorAll("[data-panel]").forEach((button) => button.addEventListener("click", () => showPanel(button.dataset.panel)));
   window.addEventListener("resize", refreshMapSize);

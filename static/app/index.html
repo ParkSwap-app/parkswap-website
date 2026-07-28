@@ -15,7 +15,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css?v=1.9.4">
-  <link rel="stylesheet" href="app.css?v=20260727-location-actions-1">
+  <link rel="stylesheet" href="app.css?v=20260727-community-zones-1">
   <title>ParkSwap</title>
 </head>
 <body>
@@ -88,6 +88,7 @@
           <div class="map-wrap">
             <div id="map" aria-label="Nearby parking activity map"></div>
             <div class="map-shade"></div>
+            <div class="map-legend" aria-label="Map legend"><span><i class="legend-live"></i>Live opportunity</span><span><i class="legend-zone"></i>Community activity</span></div>
             <button id="recenterButton" class="recenter-button" aria-label="Center map on my location">⌖</button>
             <div class="map-status"><i></i><span id="locationStatus">Finding your location…</span></div>
           </div>
@@ -98,7 +99,7 @@
               <div><p class="eyebrow">What are you doing?</p><h2>Parking, made simpler.</h2></div>
               <span id="nearbyCount" class="count-pill">Checking activity…</span>
             </div>
-            <div class="mode-grid">
+            <div id="driverActions" class="mode-grid">
               <button id="lookButton" class="mode-card mode-look" type="button">
                 <span class="mode-icon">⌖</span><span><strong>Find parking</strong><small>See drivers leaving nearby</small></span><b>→</b>
               </button>
@@ -107,6 +108,11 @@
               </button>
               <button id="soonButton" class="mode-card mode-soon" type="button">
                 <span class="mode-icon">◷</span><span><strong>Leaving Soon?</strong><small>Set a reminder, then confirm when ready</small></span><b>→</b>
+              </button>
+            </div>
+            <div id="spotterActions" class="mode-grid hidden">
+              <button id="spotterButton" class="mode-card mode-leave" type="button">
+                <span class="mode-icon">P</span><span><strong>Spot Open Here</strong><small>Report a legal public parking space</small></span><b>→</b>
               </button>
             </div>
             <button id="stopButton" class="stop-button hidden">Stop sharing or searching</button>
@@ -130,6 +136,10 @@
           <div id="vehicleCard" class="account-card vehicle-card">
             <div class="card-title"><span>Vehicle</span><button id="editVehicleButton">Edit</button></div>
             <p id="vehicleSummary">Add your vehicle so another driver can recognize you during a handoff.</p>
+          </div>
+          <div class="account-card payout-card">
+            <div class="card-title"><span>Tips &amp; payouts</span><button id="setupPayoutButton">Set up</button></div>
+            <p id="payoutSummary">Secure payout setup is optional and handled by Stripe. ParkSwap never stores your full bank details.</p>
           </div>
           <a class="account-link" href="../privacy/">Privacy &amp; safety <span>→</span></a>
           <a class="account-link" href="../terms/">Terms of use <span>→</span></a>
@@ -209,8 +219,19 @@
     </div>
   </div>
 
+  <div id="spotterModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="spotterTitle">
+    <div class="modal-backdrop" data-close-modal></div>
+    <div class="modal-card">
+      <button class="modal-close" data-close-modal aria-label="Close">×</button>
+      <p class="eyebrow">Community report</p><h2 id="spotterTitle">Report an open spot?</h2>
+      <p class="modal-intro">Only report a legal public parking space. Do not report hydrants, driveways, crosswalks, bus stops, loading zones, private spaces, or restricted areas.</p>
+      <button id="confirmSpotterButton" class="primary-button" type="button"><span>Confirm Spot Open Here</span><b>→</b></button>
+      <p class="safety-note"><span>!</span> Reports are unverified and never reserve or guarantee a public space.</p>
+    </div>
+  </div>
+
   <div id="toast" class="toast hidden" role="status"></div>
   <script src="vendor/leaflet/leaflet.js?v=1.9.4"></script>
-  <script src="app.js?v=20260727-location-actions-2" defer></script>
+  <script src="app.js?v=20260727-community-zones-1" defer></script>
 </body>
 </html>
