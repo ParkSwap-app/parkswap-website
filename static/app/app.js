@@ -409,7 +409,7 @@
     }, (error) => { clearTimeout(timeout); finishWithError(error); }, { enableHighAccuracy: true, timeout: 7000, maximumAge: 30000 });
   }
   async function loadSpots(showErrors = true) {
-    if (!state.coords || !state.token) return;
+    if ((!state.coords && !state.exploreCoords) || !state.token) return;
     try {
       const mapCoords = state.exploreCoords || state.coords;
       const latitude = encodeURIComponent(mapCoords.latitude), longitude = encodeURIComponent(mapCoords.longitude);
