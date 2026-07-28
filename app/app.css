@@ -50,3 +50,5 @@
 .destination-result:hover,.destination-result:focus-visible{background:rgba(255,191,0,.12);outline:none}
 .destination-result>span:first-child{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#ffbf00;color:#111;font-weight:900}
 .destination-result span:nth-child(2){min-width:0;display:grid;gap:2px}.destination-result strong,.destination-result small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.destination-result strong{font-size:.82rem}.destination-result small{color:#a9adb7;font-size:.7rem}.destination-result b{color:#ffbf00}
+.destination-results:not(.hidden){animation:destination-results-in .16s ease-out}
+@keyframes destination-results-in{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:translateY(0)}}
