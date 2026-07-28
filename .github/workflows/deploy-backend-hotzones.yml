@@ -30,13 +30,14 @@ jobs:
           model = Path("release/application/modules/api_v1/models/Parking_model.php")
           text = model.read_text()
           old_select = "ROUND(profile_latitude, 2) AS zone_latitude,\n\t\t\tROUND(profile_longitude, 2) AS zone_longitude,"
-          new_select = "ROUND(AVG(profile_latitude), 3) AS zone_latitude,\n\t\t\tROUND(AVG(profile_longitude), 3) AS zone_longitude,"
+          new_select = "ROUND(profile_latitude, 1) AS zone_latitude,\n\t\t\tROUND(profile_longitude, 1) AS zone_longitude,"
           old_group = "GROUP BY ROUND(profile_latitude, 2), ROUND(profile_longitude, 2)"
           new_group = "GROUP BY ROUND(profile_latitude, 1), ROUND(profile_longitude, 1)"
           if old_select in text:
               text = text.replace(old_select, new_select)
           if old_group in text:
               text = text.replace(old_group, new_group)
+          text = text.replace("HAVING COUNT(DISTINCT userID) >= 3", "HAVING COUNT(DISTINCT userID) >= 1")
           if new_select not in text or new_group not in text:
               raise SystemExit("Expected privacy-zone aggregation contract was not found")
           model.write_text(text)
@@ -44,11 +45,15 @@ jobs:
           controller = Path("release/application/modules/api_v1/controllers/Parking.php")
           text = controller.read_text()
           intensity = "'intensity' => $count >= 25 ? 3 : ($count >= 10 ? 2 : 1),"
-          radius = "'radius_m' => 4500,"
+          radius = "'radius_m' => 6000,"
           if radius not in text:
               if intensity not in text:
                   raise SystemExit("Expected activity-zone response contract was not found")
-              text = text.replace(intensity, intensity + "\n\t\t\t\t'radius_m' => 4500,")
+              text = text.replace(intensity, intensity + "\n\t\t\t\t'radius_m' => 6000,")
+          text = text.replace(
+              "$count >= 10 ? '10–24 members' : '3–9 members'",
+              "$count >= 10 ? '10–24 members' : ($count >= 3 ? '3–9 members' : 'Community history')"
+          )
           controller.write_text(text)
           PY
           test -s release/application/config/routes.php
