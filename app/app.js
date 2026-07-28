@@ -4,6 +4,7 @@
     token: localStorage.getItem("parkswap_token") || "",
     user: safeParse(localStorage.getItem("parkswap_user")) || null,
     vehicle: safeParse(localStorage.getItem("parkswap_vehicle")) || null,
+    accountRole: localStorage.getItem("parkswap_account_role") || "driver",
     coords: null,
     mode: Number(localStorage.getItem("parkswap_mode")) || 0,
     spots: [],
@@ -79,9 +80,19 @@
     localStorage.setItem("parkswap_user", JSON.stringify(user));
     if (state.vehicle) localStorage.setItem("parkswap_vehicle", JSON.stringify(state.vehicle));
   }
+  function setAccountRole(role) {
+    state.accountRole = role === "spotter" ? "spotter" : "driver";
+    localStorage.setItem("parkswap_account_role", state.accountRole);
+    document.querySelectorAll('input[name="account_role"]').forEach((input) => {
+      input.checked = input.value === state.accountRole;
+    });
+    $("accountRole").textContent = state.accountRole === "spotter" ? "Spotter" : "Driver";
+    $("vehicleCard").classList.toggle("hidden", state.accountRole === "spotter");
+  }
   function signOut(showToast = true) {
-    state.token = ""; state.user = null; state.vehicle = null; state.mode = 0; state.spots = [];
-    ["parkswap_token", "parkswap_user", "parkswap_vehicle", "parkswap_mode"].forEach((key) => localStorage.removeItem(key));
+    state.token = ""; state.user = null; state.vehicle = null; state.mode = 0; state.spots = []; state.accountRole = "driver";
+    ["parkswap_token", "parkswap_user", "parkswap_vehicle", "parkswap_mode", "parkswap_account_role"].forEach((key) => localStorage.removeItem(key));
+    setAccountRole("driver");
     clearInterval(state.refreshTimer); state.refreshTimer = null;
     mainView.classList.add("hidden"); authView.classList.remove("hidden");
     if (showToast) toast("Signed out safely.");
@@ -111,8 +122,13 @@
         provider, id_token: idToken, nonce, device_token: `web-${deviceId()}`,
       }, auth: false });
       saveSession(payload);
+      if (payload?.data?.is_new_user) {
+        const selectedRole = document.querySelector('input[name="account_role"]:checked')?.value || "driver";
+        setAccountRole(selectedRole);
+      }
       await enterApp();
-      if (payload?.data?.is_new_user) openVehicleModal();
+      if (payload?.data?.is_new_user && state.accountRole === "driver") openVehicleModal();
+      if (payload?.data?.is_new_user && state.accountRole === "spotter") toast("Spotter profile ready. No vehicle required.");
     } catch (error) { message(authMessage, error.message); }
     finally { state.socialBusy = false; }
   }
@@ -161,7 +177,13 @@
     const data = Object.fromEntries(new FormData(event.currentTarget));
     if (data.password !== data.confirm_password) { message(authMessage, "Passwords do not match."); setBusy(button, false); return; }
     data.device_token = `web-${deviceId()}`;
-    try { saveSession(await api("/v1/auth/signup", { method: "POST", data, auth: false })); await enterApp(); openVehicleModal(); }
+    try {
+      setAccountRole(data.account_role);
+      saveSession(await api("/v1/auth/signup", { method: "POST", data, auth: false }));
+      await enterApp();
+      if (state.accountRole === "driver") openVehicleModal();
+      else toast("Spotter profile ready. No vehicle required.");
+    }
     catch (error) { message(authMessage, error.message); }
     finally { setBusy(button, false); }
   });
@@ -226,21 +248,50 @@
 
   async function enterApp() {
     authView.classList.add("hidden"); mainView.classList.remove("hidden");
-    $("profileName").textContent = state.user?.full_name || "ParkSwap Driver";
+    setAccountRole(state.accountRole);
+    $("profileName").textContent = state.user?.full_name || (state.accountRole === "spotter" ? "ParkSwap Spotter" : "ParkSwap Driver");
     $("profileEmail").textContent = state.user?.email || "";
     renderVehicle(); initializeMap(); renderMode();
-    requestAnimationFrame(() => requestAnimationFrame(() => state.map?.invalidateSize()));
+    refreshMapSize();
+    setTimeout(refreshMapSize, 250);
+    setTimeout(refreshMapSize, 900);
     locate();
     clearInterval(state.refreshTimer); state.refreshTimer = setInterval(() => { if (state.coords) loadSpots(false); }, 15000);
   }
+  function refreshMapSize() {
+    if (!state.map) return;
+    state.map.invalidateSize({ pan: false, animate: false });
+  }
   function initializeMap() {
-    if (state.map || !window.L) return;
+    if (state.map) return;
+    if (!window.L) {
+      $("locationStatus").textContent = "Map could not start — refresh ParkSwap";
+      return;
+    }
     state.map = L.map("map", { zoomControl: false, attributionControl: true }).setView([40.7128, -74.006], 13);
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+    let tileErrors = 0;
+    const fallbackTiles = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "© OpenStreetMap contributors",
+    });
+    const primaryTiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
       maxZoom: 20,
       subdomains: "abcd",
       attribution: "© OpenStreetMap © CARTO",
-    }).addTo(state.map);
+    });
+    primaryTiles.on("tileerror", () => {
+      tileErrors += 1;
+      if (tileErrors >= 3 && !state.map.hasLayer(fallbackTiles)) {
+        primaryTiles.remove();
+        fallbackTiles.addTo(state.map);
+      }
+    });
+    fallbackTiles.on("tileerror", () => {
+      $("locationStatus").textContent = "Map connection unavailable — tap recenter to retry";
+    });
+    primaryTiles.addTo(state.map);
+    state.map.whenReady(refreshMapSize);
+    if (window.ResizeObserver) new ResizeObserver(refreshMapSize).observe($("map"));
   }
   function locate() {
     $("locationStatus").textContent = "Finding your location…";
@@ -397,6 +448,8 @@
 
   function openVehicleModal() { message($("vehicleMessage"), ""); vehicleModal.classList.remove("hidden"); }
   function renderVehicle() {
+    $("vehicleCard").classList.toggle("hidden", state.accountRole === "spotter");
+    if (state.accountRole === "spotter") return;
     const vehicle = state.vehicle || state.user?.carinfo;
     $("vehicleSummary").textContent = vehicle ? [field(vehicle, "color"), field(vehicle, "make"), field(vehicle, "model"), field(vehicle, "plate_number")].filter(Boolean).join(" · ") : "Add your vehicle so another driver can recognize you during a handoff.";
   }
@@ -427,9 +480,12 @@
   $("recenterButton").addEventListener("click", locate); $("claimButton").addEventListener("click", claimSelected); $("editVehicleButton").addEventListener("click", openVehicleModal);
   $("enableNotifications").addEventListener("click", enableNotifications); $("installButton").addEventListener("click", installApp); $("installFromProfile").addEventListener("click", installApp);
   $("signOutButton").addEventListener("click", () => signOut()); $("alertsButton").addEventListener("click", () => { $("alertBadge").classList.add("hidden"); showPanel("activityPanel"); });
+  document.querySelectorAll('input[name="account_role"]').forEach((input) => input.addEventListener("change", () => setAccountRole(input.value)));
   document.querySelectorAll("[data-close-modal]").forEach((el) => el.addEventListener("click", () => { vehicleModal.classList.add("hidden"); spotModal.classList.add("hidden"); scheduleModal.classList.add("hidden"); }));
   document.querySelectorAll(".modal-close").forEach((el) => el.addEventListener("click", () => el.closest(".modal").classList.add("hidden")));
   document.querySelectorAll("[data-panel]").forEach((button) => button.addEventListener("click", () => showPanel(button.dataset.panel)));
+  window.addEventListener("resize", refreshMapSize);
+  window.addEventListener("orientationchange", () => setTimeout(refreshMapSize, 250));
   function showPanel(id) { document.querySelectorAll(".panel").forEach((panel) => panel.classList.toggle("active-panel", panel.id === id)); document.querySelectorAll("[data-panel]").forEach((button) => button.classList.toggle("active", button.dataset.panel === id)); if (id === "mapPanel" && state.map) setTimeout(() => state.map.invalidateSize(), 50); }
 
   if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
