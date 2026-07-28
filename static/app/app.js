@@ -24,6 +24,7 @@
     pendingAction: null,
     manualLocationMode: false,
     locationRequestId: 0,
+    exploreCoords: null,
     scheduleTimer: null,
   };
 
@@ -347,6 +348,7 @@
   }
   function applyCoordinates(latitude, longitude, accuracy, manual = false) {
     state.coords = { latitude: Number(latitude), longitude: Number(longitude), accuracy: accuracy == null ? "" : Number(accuracy), manual };
+    state.exploreCoords = null;
     state.manualLocationMode = false;
     $("map").closest(".map-wrap").classList.remove("manual-location");
     locationModal.classList.add("hidden");
@@ -394,7 +396,8 @@
   async function loadSpots(showErrors = true) {
     if (!state.coords || !state.token) return;
     try {
-      const latitude = encodeURIComponent(state.coords.latitude), longitude = encodeURIComponent(state.coords.longitude);
+      const mapCoords = state.exploreCoords || state.coords;
+      const latitude = encodeURIComponent(mapCoords.latitude), longitude = encodeURIComponent(mapCoords.longitude);
       const [legacyResult, scheduledResult, spotterResult, zonesResult] = await Promise.allSettled([
         api(`/v1/parking/list?latitude=${latitude}&longitude=${longitude}`),
         api(`/v1/parking-network/scheduled-departures/nearby?latitude=${latitude}&longitude=${longitude}`),
@@ -424,6 +427,27 @@
       if (fresh.length && previousIds.size) notifyNewSpot(fresh.length);
       if (data.swap) renderConnection(data.swap);
     } catch (error) { if (showErrors) toast(error.message); }
+  }
+  async function exploreDestination(query) {
+    const value = String(query || "").trim();
+    if (value.length < 3) return toast("Enter a neighborhood, address, or destination.");
+    const button = $("destinationButton");
+    setBusy(button, true, "…");
+    try {
+      const search = encodeURIComponent(`${value}, New York, NY`);
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=us&limit=1&viewbox=-74.2591,40.9176,-73.7004,40.4774&bounded=0&q=${search}`, { headers: { Accept: "application/json" } });
+      if (!response.ok) throw new Error("Destination search is temporarily unavailable.");
+      const results = await response.json();
+      const match = Array.isArray(results) ? results[0] : null;
+      const latitude = Number(match?.lat), longitude = Number(match?.lon);
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) throw new Error("We could not find that destination in New York City.");
+      state.exploreCoords = { latitude, longitude };
+      state.map?.setView([latitude, longitude], 14);
+      $("locationStatus").textContent = `Exploring ${value}`;
+      await loadSpots();
+      toast("Showing live opportunities and community activity near your destination.");
+    } catch (error) { toast(error.message || "Destination search is temporarily unavailable."); }
+    finally { setBusy(button, false); }
   }
   function spotId(item) { return String(item.parkingID || item.id || item.user_id || item.userID || `${item.latitude}-${item.longitude}`); }
   function field(item, ...keys) { for (const key of keys) if (item?.[key] != null && item[key] !== "") return item[key]; return ""; }
@@ -678,6 +702,7 @@
   window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); state.installPrompt = event; $("installButton").classList.remove("hidden"); });
 
   $("lookButton").addEventListener("click", () => setMode(1)); $("leaveButton").addEventListener("click", () => setMode(2)); $("soonButton").addEventListener("click", openScheduleModal); $("stopButton").addEventListener("click", stopMode);
+  $("destinationForm").addEventListener("submit", (event) => { event.preventDefault(); exploreDestination($("destinationInput").value); });
   $("spotterButton").addEventListener("click", reportSpotterOpportunity); $("confirmSpotterButton").addEventListener("click", confirmSpotterOpportunity); $("setupPayoutButton").addEventListener("click", setupPayouts);
   $("recenterButton").addEventListener("click", () => locate({ userInitiated: true })); $("claimButton").addEventListener("click", claimSelected); $("editVehicleButton").addEventListener("click", openVehicleModal);
   $("enableNotifications").addEventListener("click", enableNotifications); $("installButton").addEventListener("click", installApp); $("installFromProfile").addEventListener("click", installApp);
