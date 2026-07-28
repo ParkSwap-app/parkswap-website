@@ -25,6 +25,9 @@
     manualLocationMode: false,
     locationRequestId: 0,
     exploreCoords: null,
+    exploreLabel: "",
+    exploreMarker: null,
+    searchOnlyMode: false,
     scheduleTimer: null,
   };
 
@@ -285,7 +288,7 @@
     setTimeout(refreshMapSize, 250);
     setTimeout(refreshMapSize, 900);
     locate();
-    clearInterval(state.refreshTimer); state.refreshTimer = setInterval(() => { if (state.coords) loadSpots(false); }, 15000);
+    clearInterval(state.refreshTimer); state.refreshTimer = setInterval(() => { if (state.coords || state.exploreCoords) loadSpots(false); }, 15000);
   }
   async function restoreNetworkState() {
     try {
@@ -364,6 +367,9 @@
   function applyCoordinates(latitude, longitude, accuracy, manual = false) {
     state.coords = { latitude: Number(latitude), longitude: Number(longitude), accuracy: accuracy == null ? "" : Number(accuracy), manual };
     state.exploreCoords = null;
+    state.exploreLabel = "";
+    state.searchOnlyMode = false;
+    if (state.exploreMarker) { state.exploreMarker.remove(); state.exploreMarker = null; }
     state.manualLocationMode = false;
     $("map").closest(".map-wrap").classList.remove("manual-location");
     locationModal.classList.add("hidden");
@@ -410,6 +416,7 @@
   }
   async function loadSpots(showErrors = true) {
     if ((!state.coords && !state.exploreCoords) || !state.token) return;
+    $("nearbyCount").textContent = "Refreshing activity…";
     try {
       const mapCoords = state.exploreCoords || state.coords;
       const latitude = encodeURIComponent(mapCoords.latitude), longitude = encodeURIComponent(mapCoords.longitude);
@@ -419,7 +426,6 @@
         withDeadline(api(`/v1/parking-network/spotter-reports/nearby?latitude=${latitude}&longitude=${longitude}`)),
         withDeadline(api(`/v1/parking/activity-zones?latitude=${latitude}&longitude=${longitude}`)),
       ]);
-      if (legacyResult.status === "rejected" && scheduledResult.status === "rejected" && spotterResult.status === "rejected") throw legacyResult.reason;
       const payload = legacyResult.status === "fulfilled" ? legacyResult.value : {};
       const data = payload?.data || {};
       const incoming = Array.isArray(data.parking_list) ? data.parking_list : [];
@@ -441,7 +447,14 @@
       const fresh = state.spots.filter((item) => !previousIds.has(spotId(item)));
       if (fresh.length && previousIds.size) notifyNewSpot(fresh.length);
       if (data.swap) renderConnection(data.swap);
-    } catch (error) { if (showErrors) toast(error.message); }
+      const allUnavailable = [legacyResult, scheduledResult, spotterResult, zonesResult].every((result) => result.status === "rejected");
+      if (allUnavailable && showErrors) toast("Live parking is reconnecting. You can still explore the map and try again.");
+    } catch (error) {
+      state.spots = [];
+      state.activityZones = [];
+      renderSpots();
+      if (showErrors) toast(error.message || "Live parking is reconnecting. Please try again.");
+    }
   }
   async function exploreDestination(query) {
     const value = String(query || "").trim();
@@ -449,33 +462,41 @@
     const button = $("destinationButton");
     setBusy(button, true, "…");
     try {
-      const search = encodeURIComponent(`${value}, New York, NY`);
-      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=us&limit=1&viewbox=-74.2591,40.9176,-73.7004,40.4774&bounded=0&q=${search}`, { headers: { Accept: "application/json" } });
+      const search = encodeURIComponent(value);
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=us&addressdetails=1&limit=5&q=${search}`, { headers: { Accept: "application/json" } });
       if (!response.ok) throw new Error("Destination search is temporarily unavailable.");
       const results = await response.json();
       const match = Array.isArray(results) ? results[0] : null;
       const latitude = Number(match?.lat), longitude = Number(match?.lon);
-      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) throw new Error("We could not find that destination in New York City.");
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) throw new Error("We could not find that U.S. address or destination. Add a city and state, then try again.");
       state.exploreCoords = { latitude, longitude };
+      state.exploreLabel = String(match?.display_name || value).split(",").slice(0, 3).join(",");
       state.map?.setView([latitude, longitude], 14);
-      $("locationStatus").textContent = `Exploring ${value}`;
+      if (state.exploreMarker) state.exploreMarker.remove();
+      if (state.map && window.L) {
+        state.exploreMarker = L.marker([latitude, longitude], {
+          icon: L.divIcon({ className: "destination-pin", html: "<span>⌖</span>", iconSize: [32, 32], iconAnchor: [16, 16] }),
+        }).addTo(state.map).bindPopup(`<strong>Parking search area</strong><br>${escapeHtml(state.exploreLabel)}`);
+      }
+      $("locationStatus").textContent = `Exploring ${state.exploreLabel}`;
       await loadSpots();
-      toast("Showing live opportunities and community activity near your destination.");
+      toast("Showing live opportunities and community activity near this address.");
     } catch (error) { toast(error.message || "Destination search is temporarily unavailable."); }
     finally { setBusy(button, false); }
   }
   function spotId(item) { return String(item.parkingID || item.id || item.user_id || item.userID || `${item.latitude}-${item.longitude}`); }
   function field(item, ...keys) { for (const key of keys) if (item?.[key] != null && item[key] !== "") return item[key]; return ""; }
   function distanceMiles(a, b) {
-    if (!state.coords || !a || !b) return null;
-    const rad = Math.PI / 180, lat1 = state.coords.latitude * rad, lat2 = Number(a) * rad, dLat = (Number(a) - state.coords.latitude) * rad, dLon = (Number(b) - state.coords.longitude) * rad;
+    const origin = state.exploreCoords || state.coords;
+    if (!origin || !a || !b) return null;
+    const rad = Math.PI / 180, lat1 = origin.latitude * rad, lat2 = Number(a) * rad, dLat = (Number(a) - origin.latitude) * rad, dLon = (Number(b) - origin.longitude) * rad;
     const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
     return 3958.8 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
   }
   function renderSpots() {
     $("nearbyCount").textContent = state.spots.length
       ? (state.spots.length === 1 ? "1 live opportunity" : `${state.spots.length} live opportunities`)
-      : (state.activityZones.length ? "Community nearby" : "No activity yet");
+      : (state.activityZones.length === 1 ? "1 community hot zone" : state.activityZones.length ? `${state.activityZones.length} community hot zones` : "No verified activity yet");
     state.spotMarkers.forEach((marker) => marker.remove()); state.spotMarkers = [];
     state.activityZoneLayers.forEach((layer) => layer.remove()); state.activityZoneLayers = [];
     if (state.map && window.L) state.activityZones.forEach((zone) => {
@@ -488,7 +509,7 @@
         color: "#ffbf00",
         weight: 1,
         fillColor: "#ffbf00",
-        fillOpacity: .08 + (intensity * .035),
+        fillOpacity: .14 + (intensity * .05),
         interactive: true,
       }).addTo(state.map);
       circle.bindPopup(`<div class="zone-popup"><strong>ParkSwap community</strong><span>${escapeHtml(zone.member_range || "Active community")}</span><small>Approximate, anonymous historical activity — not a live parking spot.</small></div>`);
@@ -530,15 +551,26 @@
     spotModal.classList.remove("hidden");
   }
   async function setMode(type) {
-    if (!state.coords) { state.pendingAction = type === 1 ? "look" : "leave"; openLocationModal(); return; }
+    const actionCoords = type === 1 ? (state.exploreCoords || state.coords) : state.coords;
+    if (!actionCoords) { state.pendingAction = type === 1 ? "look" : "leave"; openLocationModal(type === 1 ? "Allow location, choose a point on the map, or search any U.S. address above." : "Your current location is required to share a parking departure."); return; }
     const button = type === 1 ? $("lookButton") : $("leaveButton"); setBusy(button, true, type === 1 ? "Starting search…" : "Sharing spot…");
     try {
+      if (type === 1 && state.exploreCoords) {
+        state.mode = 1;
+        state.searchOnlyMode = true;
+        localStorage.setItem("parkswap_mode", "1");
+        renderMode();
+        await loadSpots(false);
+        toast(`Watching parking activity near ${state.exploreLabel || "this destination"}.`);
+        return;
+      }
       if (type === 2 && state.activeScheduled?.id && !state.activeScheduled.local_reminder) {
         await api(`/v1/parking-network/scheduled-departures/${encodeURIComponent(state.activeScheduled.id)}/confirm`, { method: "POST" });
         state.activeScheduled = null; localStorage.removeItem("parkswap_scheduled_departure");
       } else {
         await api("/v1/parking/request", { method: "POST", data: { location: "Current location", latitude: state.coords.latitude, longitude: state.coords.longitude, type } });
       }
+      state.searchOnlyMode = false;
       state.mode = type; localStorage.setItem("parkswap_mode", String(type)); renderMode(); await loadSpots(false);
       toast(type === 1 ? "Looking for nearby parking activity." : "Your live departure was shared with nearby drivers.");
     } catch (error) {
@@ -553,6 +585,9 @@
   }
   $("scheduleForm").addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (!state.coords && state.mode === 1) {
+      state.mode = 0; localStorage.removeItem("parkswap_mode"); renderMode(); toast("Parking watch stopped."); return;
+    }
     if (!state.coords) return;
     const button = event.currentTarget.querySelector("button[type=submit]");
     const minutes = Number(new FormData(event.currentTarget).get("minutes"));
@@ -582,6 +617,9 @@
     finally { setBusy(button, false); }
   });
   async function stopMode() {
+    if (state.searchOnlyMode) {
+      state.mode = 0; state.searchOnlyMode = false; localStorage.removeItem("parkswap_mode"); renderMode(); toast("Parking watch stopped."); return;
+    }
     if (!state.mode && state.activeScheduled?.id && !state.activeScheduled.local_reminder) {
       try {
         await api(`/v1/parking-network/scheduled-departures/${encodeURIComponent(state.activeScheduled.id)}/cancel`, { method: "POST" });
@@ -607,7 +645,9 @@
     }
     if (!state.mode) { active.classList.add("hidden"); stop.classList.add("hidden"); return; }
     active.classList.remove("hidden"); stop.classList.remove("hidden");
-    active.textContent = state.mode === 1 ? "Looking is active. ParkSwap is refreshing nearby departures automatically." : "Your spot is live. Stay safely parked while another driver responds.";
+    active.textContent = state.mode === 1
+      ? (state.exploreCoords ? `Watching parking near ${state.exploreLabel || "your destination"}. ParkSwap refreshes automatically.` : "Looking is active. ParkSwap is refreshing nearby departures automatically.")
+      : "Your spot is live. Stay safely parked while another driver responds.";
   }
   function userMarkerClass() {
     if (state.mode === 1) return "user-pin looking-pin";
