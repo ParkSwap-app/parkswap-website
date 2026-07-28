@@ -22,7 +22,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css?v=1.9.4">
-  <link rel="stylesheet" href="app.css?v=20260728-live-address-4">
+  <link rel="stylesheet" href="app.css?v=20260728-live-address-5">
   <title>ParkSwap</title>
 </head>
 <body>
@@ -97,7 +97,7 @@
             <div class="map-shade"></div>
             <form id="destinationForm" class="destination-search" role="search">
               <label class="sr-only" for="destinationInput">Search any U.S. address or parking destination</label>
-              <input id="destinationInput" type="search" autocomplete="street-address" placeholder="Enter an address, city, or destination" maxlength="160">
+              <input id="destinationInput" type="search" role="combobox" aria-autocomplete="list" aria-controls="destinationResults" aria-expanded="false" autocomplete="street-address" placeholder="Enter an address, city, or destination" maxlength="160">
               <button id="destinationButton" type="submit" aria-label="Search destination">→</button>
               <div id="destinationResults" class="destination-results hidden" role="listbox" aria-label="Address matches"></div>
             </form>
@@ -245,6 +245,6 @@
 
   <div id="toast" class="toast hidden" role="status"></div>
   <script src="vendor/leaflet/leaflet.js?v=1.9.4"></script>
-  <script src="app.js?v=20260728-live-address-4" defer></script>
+  <script src="app.js?v=20260728-live-address-5" defer></script>
 </body>
 </html>
