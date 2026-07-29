@@ -13,7 +13,7 @@ test("builds the complete ParkSwap landing page", async () => {
   assert.match(html, /Safety & trust/i);
   assert.match(html, /apps\.apple\.com\/us\/app\/parkswap(?:-swap-your-spot)?\/id1494510599/i);
   assert.match(html, /class="app-store-badge"/i);
-  assert.match(html, /href="\/app\/"/i);
+  assert.match(html, /href="https:\/\/app\.parkswap\.com\/app\/"/i);
   assert.match(html, /Leaving Soon\?/i);
   assert.match(html, /Works on any phone/i);
   assert.doesNotMatch(html, /Google Play|CarPlay|parking management services/i);
@@ -66,6 +66,8 @@ test("keeps mobile navigation targets accessible", async () => {
 
 test("packages the installable ParkSwap phone app", async () => {
   const app = await readFile(new URL("dist/client/app/index.html", root), "utf8");
+  const appCss = await readFile(new URL("dist/client/app/app.css", root), "utf8");
+  const appJs = await readFile(new URL("dist/client/app/app.js", root), "utf8");
   const manifest = JSON.parse(await readFile(new URL("dist/client/app/manifest.webmanifest", root), "utf8"));
   const worker = await readFile(new URL("dist/server/index.js", root), "utf8");
 
@@ -74,20 +76,41 @@ test("packages the installable ParkSwap phone app", async () => {
   assert.match(app, /Create free account/);
   assert.match(app, /Join as a Spotter/);
   assert.match(app, /No vehicle required/);
+  assert.match(app, /Spot Open Here/);
+  assert.match(app, /Tips &amp; payouts/);
+  assert.match(app, /handled by Stripe/);
   assert.match(app, /vendor\/leaflet\/leaflet\.js/);
   assert.match(app, /View parking alerts/);
   assert.match(app, /Choose a point on the map/);
   assert.match(app, /Enable precise location/);
   assert.match(app, /id="locationMessage"/);
+  assert.match(app, /Search any U\.S\. address or parking destination/);
+  assert.match(app, /role="combobox"/);
+  assert.match(app, /aria-controls="destinationResults"/);
+  assert.match(appCss, /looking-pin/);
+  assert.match(appCss, /leaving-pin/);
+  assert.match(appCss, /scheduled-user-pin/);
   assert.match(app, /Continue with Google/);
   assert.match(app, /Continue with Apple/);
   assert.match(app, /googleIdentityButton/);
   assert.match(app, /appleIdentityButton/);
   assert.match(app, /Email my secure web password/);
+  assert.match(appJs, /scheduled-departures\/[^`]+\/confirm/);
+  assert.match(appJs, /scheduled-departures\/[^`]+\/cancel/);
+  assert.match(appJs, /spotter-reports\/nearby/);
+  assert.match(appJs, /payment\/account-verification/);
+  assert.match(app, /https:\/\/app\.parkswap\.com\/app\//);
+  assert.match(appJs, /const API = "\/api"/);
+  assert.doesNotMatch(appJs, /old\.parkswap\.com/);
+  assert.match(appJs, /nominatim\.openstreetmap\.org\/search/);
+  assert.match(appJs, /destinationSearchTimer/);
+  assert.match(appJs, /aria-expanded/);
+  assert.match(appJs, /state\.exploreCoords \|\| state\.coords/);
+  assert.doesNotMatch(app, /routing number|account number/i);
   assert.doesNotMatch(app, /subscription/i);
   assert.equal(manifest.display, "standalone");
   assert.equal(manifest.name, "ParkSwap");
-  assert.match(worker, /https:\/\/parkswap\.com/);
+  assert.match(worker, /https:\/\/app\.parkswap\.com/);
   await Promise.all([
     access(new URL("dist/client/app/vendor/leaflet/leaflet.js", root)),
     access(new URL("dist/client/app/vendor/leaflet/leaflet.css", root)),
