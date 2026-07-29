@@ -71,8 +71,12 @@ jobs:
               fi
             done
             printf '%s\n' "$SUDO_PASSWORD" | sudo -S systemctl reload nginx
-            body="$(curl -fsS --retry 5 --retry-delay 2 https://app.parkswap.com/api/v1/auth/social-config)"
+            body="$(curl -fsS --retry 5 --retry-delay 2 \
+              -A 'Mozilla/5.0 ParkSwapDeploymentCheck/1.0' \
+              -H 'Accept: application/json' \
+              -H 'Origin: https://app.parkswap.com' \
+              https://app.parkswap.com/api/v1/auth/social-config)"
             printf '%s' "$body" | grep -Fq '"google"'
-            printf '%s' "$body" | grep -Fq '"enabled":true'
+            printf '%s' "$body" | grep -Eq '"enabled"[[:space:]]*:[[:space:]]*true'
             printf '%s' "$body" | grep -Fq '149543713758-id9bq17lmn8rnrqmnlj5knestr76g3qe.apps.googleusercontent.com'
             rm -rf "$release"
