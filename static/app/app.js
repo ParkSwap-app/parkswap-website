@@ -1,8 +1,7 @@
 (() => {
-  // Use the canonical production application service. This replaces the
-  // legacy API hostname that can return certificate or HTML errors in modern
-  // browsers while preserving existing accounts and sessions.
-  const API = "https://app.parkswap.com/api";
+  // The product and its API share app.parkswap.com. Keeping these requests
+  // same-origin prevents browsers from blocking identity and parking actions.
+  const API = "/api";
   const state = {
     token: localStorage.getItem("parkswap_token") || "",
     user: safeParse(localStorage.getItem("parkswap_user")) || null,
