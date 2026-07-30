@@ -1,0 +1,74 @@
+name: Restore ParkSwap parking action dependency
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: parkswap-production-backend-parking
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate restored dependency
+        run: php -l backend-release/application/libraries/Parking_payment_policy.php
+
+      - name: Upload restored dependency
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.PARKSWAP_HOST }}
+          username: ${{ secrets.PARKSWAP_SSH_USER }}
+          password: ${{ secrets.PARKSWAP_SSH_PASSWORD }}
+          source: backend-release/application/libraries/Parking_payment_policy.php
+          target: /tmp/parkswap-parking-policy
+          strip_components: 3
+          overwrite: true
+
+      - name: Activate and verify parking actions
+        uses: appleboy/ssh-action@v1
+        env:
+          SUDO_PASSWORD: ${{ secrets.PARKSWAP_SUDO_PASSWORD }}
+        with:
+          host: ${{ secrets.PARKSWAP_HOST }}
+          username: ${{ secrets.PARKSWAP_SSH_USER }}
+          password: ${{ secrets.PARKSWAP_SSH_PASSWORD }}
+          envs: SUDO_PASSWORD
+          script: |
+            set -eu
+            source=/tmp/parkswap-parking-policy/Parking_payment_policy.php
+            target=/var/www/html/backend-api/application/libraries/Parking_payment_policy.php
+            stamp="$(date +%Y%m%d%H%M%S)"
+            test -s "$source"
+            php -l "$source"
+            printf '%s\n' "$SUDO_PASSWORD" | sudo -S mkdir -p "/var/backups/parkswap-parking/$stamp" "$(dirname "$target")"
+            if [ -f "$target" ]; then
+              printf '%s\n' "$SUDO_PASSWORD" | sudo -S cp -a "$target" "/var/backups/parkswap-parking/$stamp/Parking_payment_policy.php"
+            fi
+            printf '%s\n' "$SUDO_PASSWORD" | sudo -S install -m 0644 "$source" "$target"
+            php -l "$target"
+            for service in php8.3-fpm php8.2-fpm php8.1-fpm php8.0-fpm php7.4-fpm; do
+              if systemctl is-active --quiet "$service"; then
+                printf '%s\n' "$SUDO_PASSWORD" | sudo -S systemctl reload "$service"
+              fi
+            done
+            status="$(curl -ksS --resolve app.parkswap.com:443:127.0.0.1 --max-time 10 \
+              -H 'Authorization: Bearer parkswap-route-test' \
+              -H 'Device-Id: parkswap-healthcheck' \
+              -H 'Device-Type: 3' \
+              -H 'Timezone: America/New_York' \
+              -H 'Language: en' \
+              -H 'Accept: application/json' \
+              -F 'location=Production route test' \
+              -F 'latitude=40.7580' \
+              -F 'longitude=-73.9855' \
+              -F 'type=1' \
+              -o /tmp/parkswap-action-response \
+              -w '%{http_code}' \
+              https://app.parkswap.com/api/v1/parking/request)"
+            echo "HTTP $status"
+            sed -n '1,12p' /tmp/parkswap-action-response
+            test "$status" -lt 500
+            rm -rf /tmp/parkswap-parking-policy
