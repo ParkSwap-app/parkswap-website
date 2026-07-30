@@ -384,7 +384,7 @@
       crossOrigin: true,
       attribution: "© OpenStreetMap contributors",
     });
-    const primaryTiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+    const primaryTiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
       maxZoom: 20,
       subdomains: "abcd",
       crossOrigin: true,
