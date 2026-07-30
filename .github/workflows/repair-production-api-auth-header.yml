@@ -31,7 +31,7 @@ jobs:
             for config in $configs; do
               if ! printf '%s\n' "$SUDO_PASSWORD" | sudo -S grep -q 'fastcgi_param HTTP_AUTHORIZATION' "$config"; then
                 printf '%s\n' "$SUDO_PASSWORD" | sudo -S cp -a "$config" "$backup/$(printf '%s' "$config" | tr '/' '_')"
-                printf '%s\n' "$SUDO_PASSWORD" | sudo -S sed -i '/fastcgi_param HTTP_HOST \$host;/a\    fastcgi_param HTTP_AUTHORIZATION $http_authorization;' "$config"
+                printf '%s\n' "$SUDO_PASSWORD" | sudo -S sed -i '/fastcgi_pass/i\    fastcgi_param HTTP_AUTHORIZATION $http_authorization;' "$config"
                 changed=1
               fi
               printf '%s\n' "$SUDO_PASSWORD" | sudo -S grep -q 'fastcgi_param HTTP_AUTHORIZATION' "$config"
