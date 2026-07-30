@@ -24,6 +24,7 @@
     refreshTimer: null,
     socialConfig: null,
     googleNonce: "",
+    googleSigninTimer: null,
     socialBusy: false,
     pendingAction: null,
     manualLocationMode: false,
@@ -157,6 +158,7 @@
     });
   }
   async function finishSocialIdentity(provider, idToken, nonce) {
+    if (provider === "google") { clearTimeout(state.googleSigninTimer); state.googleSigninTimer = null; }
     if (state.socialBusy) return;
     if (!idToken) {
       message(authMessage, `${provider === "google" ? "Google" : "Apple"} did not return a sign-in credential. Please try again or use secure email access below.`);
@@ -191,7 +193,7 @@
           ux_mode: "popup",
           context: "signin",
           itp_support: true,
-          use_fedcm_for_button: true,
+          use_fedcm_for_button: false,
           state_cookie_domain: "parkswap.com",
           cancel_on_tap_outside: true,
           callback: (response) => finishSocialIdentity("google", response?.credential, state.googleNonce),
@@ -213,7 +215,11 @@
             text: "continue_with",
             logo_alignment: "left",
             width,
-            click_listener: () => message(authMessage, "Opening secure Google sign-in…", true),
+            click_listener: () => {
+              message(authMessage, "Opening Google sign-in…", true);
+              clearTimeout(state.googleSigninTimer);
+              state.googleSigninTimer = setTimeout(() => message(authMessage, "If the Google account window did not appear, allow pop-ups for ParkSwap and tap Continue with Google again."), 9000);
+            },
           });
         };
         renderGoogleButton();
@@ -367,11 +373,19 @@
     state.mapStarting = true;
     if (!window.L) {
       $("locationStatus").textContent = "Starting the parking map…";
-      try { await loadScript("vendor/leaflet/leaflet.js?v=1.9.4-runtime", "leaflet-runtime"); } catch {}
+      const leafletSources = [
+        ["https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js", "leaflet-runtime-cdn"],
+        ["https://unpkg.com/leaflet@1.9.4/dist/leaflet.js", "leaflet-runtime-unpkg"],
+        ["vendor/leaflet/leaflet.js?v=1.9.4-runtime", "leaflet-runtime-local"],
+      ];
+      for (const [source, id] of leafletSources) {
+        try { await loadScript(source, id); } catch {}
+        if (window.L) break;
+      }
     }
     if (!window.L) {
       state.mapStarting = false;
-      $("locationStatus").textContent = "Map could not start — reload ParkSwap";
+      $("locationStatus").textContent = "Map is reconnecting — address search remains available";
       return;
     }
     await new Promise((resolve) => requestAnimationFrame(resolve));

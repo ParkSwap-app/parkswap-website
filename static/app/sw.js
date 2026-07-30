@@ -1,5 +1,5 @@
-const CACHE = "parkswap-web-v26-map-clarity";
-const SHELL = ["./", "app.css", "app.js", "vendor/leaflet/leaflet.css", "vendor/leaflet/leaflet.js", "manifest.webmanifest", "../parkswap-app-icon.png"];
+const CACHE = "parkswap-web-v27-auth-map-recovery";
+const SHELL = ["./", "app.css", "app.js", "manifest.webmanifest", "../parkswap-app-icon.png"];
 self.addEventListener("install", (event) => event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting())));
 self.addEventListener("activate", (event) => event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)))).then(() => self.clients.claim())));
 self.addEventListener("fetch", (event) => {
