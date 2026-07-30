@@ -54,3 +54,16 @@
 .destination-results:not(.hidden){animation:destination-results-in .16s ease-out}
 @keyframes destination-results-in{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:translateY(0)}}
 .destination-search{z-index:720}
+
+/* Keep the primary experience usable while map tiles reconnect. */
+.map-wrap{background-color:#202125;background-image:radial-gradient(circle at 72% 20%,rgba(255,191,0,.11),transparent 28%),linear-gradient(31deg,transparent 48%,rgba(255,255,255,.045) 49%,rgba(255,255,255,.045) 51%,transparent 52%),linear-gradient(121deg,transparent 46%,rgba(255,255,255,.035) 47%,rgba(255,255,255,.035) 49%,transparent 50%);background-size:auto,84px 84px,116px 116px}
+.map-wrap #map{min-width:100%;min-height:100%;background:transparent}
+.map-wrap.map-fallback-active #map{filter:saturate(.92) contrast(1.04)}
+.leaflet-container{font-family:Manrope,Arial,sans-serif}.leaflet-tile{image-rendering:auto}
+
+/* The official Google control remains full-width and never clips its label. */
+.provider-button-slot{min-width:0;background:#fff;border-color:#d9dce1}
+
+/* Location and parking availability are intentionally separate concepts. */
+.map-status>span{display:grid;gap:1px}.map-status small{color:#8f939a;font-size:7px;font-weight:800;letter-spacing:.75px;line-height:1;text-transform:uppercase}.map-status strong{color:#f3f4f5;font-size:10px;line-height:1.25}
+.count-pill{display:grid;gap:3px;max-width:47%;white-space:normal;text-align:right}.count-pill small{color:#7f8289;font-size:7px;font-weight:800;letter-spacing:.75px;line-height:1;text-transform:uppercase}.count-pill strong{color:#f0f1f3;font-size:9px;line-height:1.25}

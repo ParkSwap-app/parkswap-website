@@ -23,7 +23,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css?v=1.9.4">
-  <link rel="stylesheet" href="app.css?v=20260728-auth-origin-1">
+  <link rel="stylesheet" href="app.css?v=20260729-map-social-2">
   <title>ParkSwap</title>
 </head>
 <body>
@@ -103,16 +103,16 @@
               <button id="destinationButton" type="submit" aria-label="Search destination">→</button>
               <div id="destinationResults" class="destination-results hidden" role="listbox" aria-label="Address matches"></div>
             </form>
-            <div class="map-legend" aria-label="Map legend"><span><i class="legend-live"></i>Live opportunity</span><span><i class="legend-zone"></i>Community activity · hot zone</span></div>
+            <div class="map-legend" aria-label="Map legend"><span><i class="legend-live"></i>Available parking now</span><span><i class="legend-zone"></i>Hot zone · area activity</span></div>
             <button id="recenterButton" class="recenter-button" aria-label="Center map on my location">⌖</button>
-            <div class="map-status"><i></i><span id="locationStatus">Finding your location…</span></div>
+            <div class="map-status"><i></i><span><small>Your position</small><strong id="locationStatus">Finding your location…</strong></span></div>
           </div>
 
           <div class="action-sheet">
             <div class="sheet-handle"></div>
             <div class="action-heading">
-              <div><p class="eyebrow">What are you doing?</p><h2>Parking, made simpler.</h2></div>
-              <span id="nearbyCount" class="count-pill">Search to view activity</span>
+              <div><p class="eyebrow">Choose your action</p><h2>Parking, made simpler.</h2></div>
+              <span class="count-pill"><small>Parking nearby</small><strong id="nearbyCount">Search an area</strong></span>
             </div>
             <div id="driverActions" class="mode-grid">
               <button id="lookButton" class="mode-card mode-look" type="button">
@@ -247,6 +247,6 @@
 
   <div id="toast" class="toast hidden" role="status"></div>
   <script src="vendor/leaflet/leaflet.js?v=1.9.4"></script>
-  <script src="app.js?v=20260728-auth-origin-1" defer></script>
+  <script src="app.js?v=20260729-map-social-2" defer></script>
 </body>
 </html>

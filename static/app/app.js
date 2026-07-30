@@ -15,6 +15,8 @@
     activeSpotter: safeParse(localStorage.getItem("parkswap_spotter_report")) || null,
     selectedSpot: null,
     map: null,
+    mapStarting: false,
+    mapFallbackActive: false,
     userMarker: null,
     spotMarkers: [],
     activityZoneLayers: [],
@@ -196,15 +198,29 @@
         });
         const slot = $("googleIdentityButton");
         slot.classList.remove("hidden"); $("googleRecoveryButton").classList.add("hidden");
-        window.google.accounts.id.renderButton(slot, {
-          type: "standard",
-          theme: "filled_black",
-          size: "large",
-          shape: "rectangular",
-          text: "continue_with",
-          width: Math.min(440, Math.max(250, slot.clientWidth || 320)),
-          click_listener: () => message(authMessage, "Opening secure Google sign-in…", true),
-        });
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+        let googleButtonWidth = 0;
+        const renderGoogleButton = () => {
+          const width = Math.max(200, Math.min(400, Math.floor(slot.getBoundingClientRect().width || 320)));
+          if (Math.abs(width - googleButtonWidth) < 3 && slot.querySelector("iframe")) return;
+          googleButtonWidth = width;
+          slot.replaceChildren();
+          window.google.accounts.id.renderButton(slot, {
+            type: "standard",
+            theme: "outline",
+            size: "large",
+            shape: "rectangular",
+            text: "continue_with",
+            logo_alignment: "left",
+            width,
+            click_listener: () => message(authMessage, "Opening secure Google sign-in…", true),
+          });
+        };
+        renderGoogleButton();
+        if (window.ResizeObserver) new ResizeObserver(() => {
+          clearTimeout(renderGoogleButton.timer);
+          renderGoogleButton.timer = setTimeout(renderGoogleButton, 120);
+        }).observe(slot);
       }
       if (state.socialConfig.apple?.enabled && state.socialConfig.apple.client_id) {
         await loadScript("https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js", "apple-signin-sdk");
@@ -346,32 +362,50 @@
     if (!state.map) return;
     state.map.invalidateSize({ pan: false, animate: false });
   }
-  function initializeMap() {
-    if (state.map) return;
+  async function initializeMap() {
+    if (state.map || state.mapStarting) return;
+    state.mapStarting = true;
     if (!window.L) {
-      $("locationStatus").textContent = "Map could not start — refresh ParkSwap";
+      $("locationStatus").textContent = "Starting the parking map…";
+      try { await loadScript("vendor/leaflet/leaflet.js?v=1.9.4-runtime", "leaflet-runtime"); } catch {}
+    }
+    if (!window.L) {
+      state.mapStarting = false;
+      $("locationStatus").textContent = "Map could not start — reload ParkSwap";
       return;
     }
+    await new Promise((resolve) => requestAnimationFrame(resolve));
     state.map = L.map("map", { zoomControl: false, attributionControl: true }).setView([40.7128, -74.006], 13);
-    let tileErrors = 0;
+    state.mapStarting = false;
+    let primaryTileLoads = 0;
+    let fallbackTileLoads = 0;
     const fallbackTiles = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
+      crossOrigin: true,
       attribution: "© OpenStreetMap contributors",
     });
     const primaryTiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
       maxZoom: 20,
       subdomains: "abcd",
+      crossOrigin: true,
       attribution: "© OpenStreetMap © CARTO",
     });
-    primaryTiles.on("tileerror", () => {
-      tileErrors += 1;
-      if (tileErrors >= 3 && !state.map.hasLayer(fallbackTiles)) {
-        primaryTiles.remove();
-        fallbackTiles.addTo(state.map);
-      }
+    const activateFallback = () => {
+      if (!state.map || state.mapFallbackActive) return;
+      state.mapFallbackActive = true;
+      document.querySelector(".map-wrap")?.classList.add("map-fallback-active");
+      if (state.map.hasLayer(primaryTiles)) primaryTiles.remove();
+      if (!state.map.hasLayer(fallbackTiles)) fallbackTiles.addTo(state.map);
+    };
+    const tileWatchdog = setTimeout(() => { if (primaryTileLoads === 0) activateFallback(); }, 2400);
+    primaryTiles.on("tileload", () => { primaryTileLoads += 1; clearTimeout(tileWatchdog); });
+    primaryTiles.on("tileerror", activateFallback);
+    fallbackTiles.on("tileload", () => {
+      fallbackTileLoads += 1;
+      if (fallbackTileLoads === 1 && !state.coords && !state.exploreCoords) $("locationStatus").textContent = "Map ready — search or enable location";
     });
     fallbackTiles.on("tileerror", () => {
-      $("locationStatus").textContent = "Map connection unavailable — tap recenter to retry";
+      if (fallbackTileLoads === 0) $("locationStatus").textContent = "Map is reconnecting — search still works";
     });
     primaryTiles.addTo(state.map);
     state.map.whenReady(refreshMapSize);
@@ -433,7 +467,7 @@
       if (settled || requestId !== state.locationRequestId) return;
       settled = true;
       $("locationStatus").textContent = "Search an address or enable location";
-      $("nearbyCount").textContent = "Search to view activity";
+      $("nearbyCount").textContent = "Search an area";
       if (userInitiated || state.pendingAction) openLocationModal(locationErrorMessage(error));
       setBusy(button, false);
     };
@@ -597,12 +631,12 @@
     return 3958.8 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
   }
   function renderSpots() {
-    const liveLabel = state.spots.length === 1 ? "1 live" : `${state.spots.length} live`;
-    const zoneLabel = state.activityZones.length === 1 ? "1 hot zone" : `${state.activityZones.length} hot zones`;
+    const liveLabel = state.spots.length === 1 ? "1 spot available now" : `${state.spots.length} spots available now`;
+    const zoneLabel = state.activityZones.length === 1 ? "1 activity hot zone" : `${state.activityZones.length} activity hot zones`;
     $("nearbyCount").textContent = state.spots.length && state.activityZones.length
       ? `${liveLabel} · ${zoneLabel}`
-      : state.spots.length ? `${liveLabel} opportunity${state.spots.length === 1 ? "" : "ies"}`
-      : state.activityZones.length ? zoneLabel : "No verified activity yet";
+      : state.spots.length ? liveLabel
+      : state.activityZones.length ? zoneLabel : "No spots reported yet";
     state.spotMarkers.forEach((marker) => marker.remove()); state.spotMarkers = [];
     state.activityZoneLayers.forEach((layer) => layer.remove()); state.activityZoneLayers = [];
     if (state.map && window.L) state.activityZones.forEach((zone) => {
