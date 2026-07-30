@@ -1,0 +1,58 @@
+name: Repair ParkSwap production API authorization
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: parkswap-production-api-routing
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Preserve and repair authorization forwarding
+        uses: appleboy/ssh-action@v1
+        env:
+          SUDO_PASSWORD: ${{ secrets.PARKSWAP_SUDO_PASSWORD }}
+        with:
+          host: ${{ secrets.PARKSWAP_HOST }}
+          username: ${{ secrets.PARKSWAP_SSH_USER }}
+          password: ${{ secrets.PARKSWAP_SSH_PASSWORD }}
+          envs: SUDO_PASSWORD
+          script: |
+            set -eu
+            stamp="$(date +%Y%m%d%H%M%S)"
+            backup="/var/backups/parkswap-nginx/$stamp"
+            printf '%s\n' "$SUDO_PASSWORD" | sudo -S mkdir -p "$backup"
+            configs="$(printf '%s\n' "$SUDO_PASSWORD" | sudo -S grep -rl 'SCRIPT_FILENAME /var/www/html/backend-api/index.php' /etc/nginx/sites-enabled /etc/nginx/conf.d 2>/dev/null || true)"
+            test -n "$configs"
+            changed=0
+            for config in $configs; do
+              if ! printf '%s\n' "$SUDO_PASSWORD" | sudo -S grep -q 'fastcgi_param HTTP_AUTHORIZATION' "$config"; then
+                printf '%s\n' "$SUDO_PASSWORD" | sudo -S cp -a "$config" "$backup/$(printf '%s' "$config" | tr '/' '_')"
+                printf '%s\n' "$SUDO_PASSWORD" | sudo -S sed -i '/fastcgi_param HTTP_HOST \$host;/a\    fastcgi_param HTTP_AUTHORIZATION $http_authorization;' "$config"
+                changed=1
+              fi
+              printf '%s\n' "$SUDO_PASSWORD" | sudo -S grep -q 'fastcgi_param HTTP_AUTHORIZATION' "$config"
+            done
+            printf '%s\n' "$SUDO_PASSWORD" | sudo -S nginx -t
+            if [ "$changed" -eq 1 ]; then
+              printf '%s\n' "$SUDO_PASSWORD" | sudo -S systemctl reload nginx
+            fi
+            curl -ksS --resolve app.parkswap.com:443:127.0.0.1 --max-time 10 \
+              -H 'Authorization: Bearer parkswap-route-test' \
+              -H 'Device-Id: parkswap-healthcheck' \
+              -H 'Device-Type: 3' \
+              -H 'Timezone: America/New_York' \
+              -H 'Language: en' \
+              -H 'Accept: application/json' \
+              -F 'location=Production route test' \
+              -F 'latitude=40.7580' \
+              -F 'longitude=-73.9855' \
+              -F 'type=1' \
+              -o /tmp/parkswap-api-route-response \
+              -w 'HTTP %{http_code}\n' \
+              https://app.parkswap.com/api/v1/parking/request
+            grep -Eq 'INVALID_TOKEN|SESSION_EXPIRED|Invalid' /tmp/parkswap-api-route-response
+            sed -n '1,8p' /tmp/parkswap-api-route-response

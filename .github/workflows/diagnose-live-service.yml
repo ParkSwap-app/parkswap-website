@@ -32,6 +32,11 @@ jobs:
                 -H 'Timezone: America/New_York' \
                 -H 'Language: en' \
                 -H 'Accept: application/json' \
+                -H 'Authorization: Bearer parkswap-route-test' \
+                -F 'location=Production route test' \
+                -F 'latitude=40.7580' \
+                -F 'longitude=-73.9855' \
+                -F 'type=1' \
                 -X POST "https://$host/api/v1/parking/request" | sed -n '1,20p'
               sed -n '1,12p' /tmp/parkswap-health-body
             done
