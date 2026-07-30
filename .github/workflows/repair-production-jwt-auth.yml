@@ -26,20 +26,24 @@ jobs:
             candidate=/tmp/Common_Service_Controller.php
             stamp="$(date +%Y%m%d%H%M%S)"
             test -s "$source"
-            awk '
-              index($0, "$decoded =  JWT::decode($authToken") {
-                print "            $jwtSecret = getenv(\047JWT_SECRET_KEY\047);"
-                print "            if (class_exists(\047\\\\Firebase\\\\JWT\\\\Key\047)) {"
-                print "                $decoded = JWT::decode($authToken, new \\Firebase\\JWT\\Key($jwtSecret, \047HS256\047));"
-                print "            } else {"
-                print "                $decoded = JWT::decode($authToken, $jwtSecret, array(\047HS256\047));"
-                print "            }"
-                replaced=1
-                next
-              }
-              { print }
-              END { if (!replaced) exit 42 }
-            ' "$source" > "$candidate"
+            if grep -Fq "new \\Firebase\\JWT\\Key" "$source"; then
+              cp "$source" "$candidate"
+            else
+              awk '
+                index($0, "$decoded =  JWT::decode($authToken") {
+                  print "            $jwtSecret = getenv(\047JWT_SECRET_KEY\047);"
+                  print "            if (class_exists(\047\\\\Firebase\\\\JWT\\\\Key\047)) {"
+                  print "                $decoded = JWT::decode($authToken, new \\Firebase\\JWT\\Key($jwtSecret, \047HS256\047));"
+                  print "            } else {"
+                  print "                $decoded = JWT::decode($authToken, $jwtSecret, array(\047HS256\047));"
+                  print "            }"
+                  replaced=1
+                  next
+                }
+                { print }
+                END { if (!replaced) exit 42 }
+              ' "$source" > "$candidate"
+            fi
             grep -Fq "new \\Firebase\\JWT\\Key" "$candidate"
             php -l "$candidate"
             printf '%s\n' "$SUDO_PASSWORD" | sudo -S mkdir -p "/var/backups/parkswap-auth/$stamp/application/core"
