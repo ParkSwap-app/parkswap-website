@@ -156,6 +156,10 @@
   }
   async function finishSocialIdentity(provider, idToken, nonce) {
     if (state.socialBusy) return;
+    if (!idToken) {
+      message(authMessage, `${provider === "google" ? "Google" : "Apple"} did not return a sign-in credential. Please try again or use secure email access below.`);
+      return;
+    }
     state.socialBusy = true; message(authMessage, `Finishing ${provider === "google" ? "Google" : "Apple"} sign-in…`, true);
     try {
       const payload = await api("/v1/auth/social-identity", { method: "POST", data: {
@@ -182,19 +186,34 @@
         window.google.accounts.id.initialize({
           client_id: state.socialConfig.google.client_id,
           nonce: state.googleNonce,
+          ux_mode: "popup",
+          context: "signin",
+          itp_support: true,
+          use_fedcm_for_button: true,
+          state_cookie_domain: "parkswap.com",
           cancel_on_tap_outside: true,
-          callback: (response) => finishSocialIdentity("google", response.credential, state.googleNonce),
+          callback: (response) => finishSocialIdentity("google", response?.credential, state.googleNonce),
         });
         const slot = $("googleIdentityButton");
         slot.classList.remove("hidden"); $("googleRecoveryButton").classList.add("hidden");
-        window.google.accounts.id.renderButton(slot, { type: "standard", theme: "filled_black", size: "large", shape: "rectangular", text: "continue_with", width: Math.min(440, Math.max(250, slot.clientWidth || 320)) });
+        window.google.accounts.id.renderButton(slot, {
+          type: "standard",
+          theme: "filled_black",
+          size: "large",
+          shape: "rectangular",
+          text: "continue_with",
+          width: Math.min(440, Math.max(250, slot.clientWidth || 320)),
+          click_listener: () => message(authMessage, "Opening secure Google sign-in…", true),
+        });
       }
       if (state.socialConfig.apple?.enabled && state.socialConfig.apple.client_id) {
         await loadScript("https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js", "apple-signin-sdk");
         $("appleIdentityButton").dataset.socialReady = "true";
       }
     } catch {
-      // Password recovery remains available when provider configuration is unavailable.
+      $("googleIdentityButton").classList.add("hidden");
+      $("googleRecoveryButton").classList.remove("hidden");
+      message(authMessage, "Google sign-in could not load. Use secure email access below to keep the same ParkSwap account.");
     }
   }
 
