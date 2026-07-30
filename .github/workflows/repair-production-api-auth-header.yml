@@ -25,7 +25,7 @@ jobs:
             stamp="$(date +%Y%m%d%H%M%S)"
             backup="/var/backups/parkswap-nginx/$stamp"
             printf '%s\n' "$SUDO_PASSWORD" | sudo -S mkdir -p "$backup"
-            configs="$(printf '%s\n' "$SUDO_PASSWORD" | sudo -S grep -rl 'SCRIPT_FILENAME /var/www/html/backend-api/index.php' /etc/nginx/sites-enabled /etc/nginx/conf.d 2>/dev/null || true)"
+            configs="$(printf '%s\n' "$SUDO_PASSWORD" | sudo -S grep -Rl --include='*.conf' 'SCRIPT_FILENAME /var/www/html/backend-api/index.php' /etc/nginx 2>/dev/null || true)"
             test -n "$configs"
             changed=0
             for config in $configs; do
