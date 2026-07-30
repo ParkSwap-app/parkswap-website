@@ -597,9 +597,12 @@
     return 3958.8 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
   }
   function renderSpots() {
-    $("nearbyCount").textContent = state.spots.length
-      ? (state.spots.length === 1 ? "1 live opportunity" : `${state.spots.length} live opportunities`)
-      : (state.activityZones.length === 1 ? "1 community hot zone" : state.activityZones.length ? `${state.activityZones.length} community hot zones` : "No verified activity yet");
+    const liveLabel = state.spots.length === 1 ? "1 live" : `${state.spots.length} live`;
+    const zoneLabel = state.activityZones.length === 1 ? "1 hot zone" : `${state.activityZones.length} hot zones`;
+    $("nearbyCount").textContent = state.spots.length && state.activityZones.length
+      ? `${liveLabel} · ${zoneLabel}`
+      : state.spots.length ? `${liveLabel} opportunity${state.spots.length === 1 ? "" : "ies"}`
+      : state.activityZones.length ? zoneLabel : "No verified activity yet";
     state.spotMarkers.forEach((marker) => marker.remove()); state.spotMarkers = [];
     state.activityZoneLayers.forEach((layer) => layer.remove()); state.activityZoneLayers = [];
     if (state.map && window.L) state.activityZones.forEach((zone) => {
@@ -610,14 +613,26 @@
       const circle = L.circle([latitude, longitude], {
         radius,
         className: `community-zone community-zone-${intensity}`,
-        color: "#ffbf00",
-        weight: 1,
-        fillColor: "#ffbf00",
-        fillOpacity: .14 + (intensity * .05),
+        color: "#ff3b30",
+        weight: 2,
+        opacity: .72,
+        fillColor: "#ff453a",
+        fillOpacity: .1 + (intensity * .045),
         interactive: true,
       }).addTo(state.map);
-      circle.bindPopup(`<div class="zone-popup"><strong>ParkSwap community</strong><span>${escapeHtml(zone.member_range || "Active community")}</span><small>Approximate, anonymous historical activity — not a live parking spot.</small></div>`);
-      state.activityZoneLayers.push(circle);
+      const memberRange = escapeHtml(zone.member_range || "Active ParkSwap community");
+      const popup = `<div class="zone-popup"><strong>Parking activity hot zone</strong><span>${memberRange}</span><small>Approximate community density from anonymized ParkSwap activity. Individual people and exact locations are never shown.</small></div>`;
+      circle.bindPopup(popup);
+      const label = L.marker([latitude, longitude], {
+        interactive: true,
+        icon: L.divIcon({
+          className: "hot-zone-marker",
+          html: `<span class="hot-zone-badge"><strong>HOT ZONE</strong><small>${memberRange}</small></span>`,
+          iconSize: [1, 1],
+          iconAnchor: [0, 0],
+        }),
+      }).addTo(state.map).bindPopup(popup);
+      state.activityZoneLayers.push(circle, label);
     });
     if (state.map && window.L) state.spots.forEach((item) => {
       const lat = Number(field(item, "latitude", "profile_latitude")), lon = Number(field(item, "longitude", "profile_longitude"));
@@ -628,8 +643,17 @@
       marker.on("click", () => openSpot(item)); state.spotMarkers.push(marker);
     });
     const list = $("activityList");
-    if (!state.spots.length) { list.innerHTML = '<div class="empty-state"><span>⌖</span><h3>No nearby activity yet</h3><p>Start looking and ParkSwap will refresh automatically.</p></div>'; return; }
+    if (!state.spots.length && !state.activityZones.length) { list.innerHTML = '<div class="empty-state"><span>⌖</span><h3>No nearby activity yet</h3><p>Start looking and ParkSwap will refresh automatically.</p></div>'; return; }
     list.innerHTML = "";
+    state.activityZones.slice(0, 5).forEach((zone) => {
+      const latitude = Number(zone.latitude), longitude = Number(zone.longitude);
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+      const button = document.createElement("button");
+      button.className = "activity-card hot-zone-card";
+      button.innerHTML = `<span class="activity-icon">●</span><span><strong>Parking activity hot zone</strong><small>${escapeHtml(zone.member_range || "Active ParkSwap community")} · approximate, anonymous area</small></span><b>View</b>`;
+      button.addEventListener("click", () => state.map?.setView([latitude, longitude], Math.max(13, state.map.getZoom())));
+      list.appendChild(button);
+    });
     state.spots.forEach((item) => {
       const lat = field(item, "latitude", "profile_latitude"), lon = field(item, "longitude", "profile_longitude"), miles = distanceMiles(lat, lon);
       const button = document.createElement("button"); button.className = "activity-card";
