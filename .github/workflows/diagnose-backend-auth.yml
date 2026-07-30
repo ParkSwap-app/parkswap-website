@@ -1,0 +1,28 @@
+name: Diagnose ParkSwap backend authentication
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check authentication dependencies and recent failures
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.PARKSWAP_HOST }}
+          username: ${{ secrets.PARKSWAP_SSH_USER }}
+          password: ${{ secrets.PARKSWAP_SSH_PASSWORD }}
+          script: |
+            set -eu
+            root=/var/www/html/backend-api
+            php -r 'foreach (["curl", "openssl", "json"] as $extension) { if (!extension_loaded($extension)) { fwrite(STDERR, "missing php extension: $extension\\n"); exit(1); } }'
+            curl -fsS --connect-timeout 5 --max-time 10 https://www.googleapis.com/oauth2/v3/certs | grep -Fq '"keys"'
+            test -s "$root/application/modules/api_v1/controllers/Auth.php"
+            test -s "$root/application/libraries/Social_identity_verifier.php"
+            printf 'Authentication runtime and Google verification endpoint are reachable.\\n'
+            if [ -d "$root/application/logs" ]; then
+              grep -h 'Social identity verification failed' "$root"/application/logs/log-*.php 2>/dev/null | tail -20 || true
+            fi
