@@ -7,7 +7,7 @@
     user: safeParse(localStorage.getItem("parkswap_user")) || null,
     vehicle: safeParse(localStorage.getItem("parkswap_vehicle")) || null,
     accountRole: localStorage.getItem("parkswap_account_role") || "driver",
-    coords: null,
+    coords: safeParse(localStorage.getItem("parkswap_last_location")) || null,
     mode: Number(localStorage.getItem("parkswap_mode")) || 0,
     spots: [],
     activityZones: [],
@@ -334,11 +334,21 @@
     $("profileName").textContent = state.user?.full_name || (state.accountRole === "spotter" ? "ParkSwap Spotter" : "ParkSwap Driver");
     $("profileEmail").textContent = state.user?.email || "";
     renderVehicle(); initializeMap(); renderMode();
+    if (state.coords) {
+      $("locationStatus").textContent = "Showing parking activity near you";
+      state.map?.setView([state.coords.latitude, state.coords.longitude], 13);
+    } else if (!state.exploreCoords) {
+      state.exploreCoords = { latitude: 40.7128, longitude: -74.006 };
+      state.exploreLabel = "New York City";
+      $("locationStatus").textContent = "Finding your area — showing New York City for now";
+      state.map?.setView([40.7128, -74.006], 13);
+    }
     restoreNetworkState();
     scheduleLocalReminder();
     refreshMapSize();
     setTimeout(refreshMapSize, 250);
     setTimeout(refreshMapSize, 900);
+    loadSpots(false);
     locate();
     clearInterval(state.refreshTimer); state.refreshTimer = setInterval(() => { if (state.coords || state.exploreCoords) loadSpots(false); }, 15000);
   }
@@ -394,6 +404,7 @@
     state.map = L.map("map", { zoomControl: false, attributionControl: true }).setView([40.7128, -74.006], 13);
     state.mapStarting = false;
     document.documentElement.dataset.parkswapMap = "ready";
+    renderSpots();
     let primaryTileLoads = 0;
     let fallbackTileLoads = 0;
     const fallbackTiles = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -446,6 +457,7 @@
   }
   function applyCoordinates(latitude, longitude, accuracy, manual = false) {
     state.coords = { latitude: Number(latitude), longitude: Number(longitude), accuracy: accuracy == null ? "" : Number(accuracy), manual };
+    localStorage.setItem("parkswap_last_location", JSON.stringify(state.coords));
     state.exploreCoords = null;
     state.exploreLabel = "";
     state.searchOnlyMode = false;
