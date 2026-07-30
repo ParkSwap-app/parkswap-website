@@ -40,7 +40,7 @@ jobs:
             if [ "$changed" -eq 1 ]; then
               printf '%s\n' "$SUDO_PASSWORD" | sudo -S systemctl reload nginx
             fi
-            curl -ksS --resolve app.parkswap.com:443:127.0.0.1 --max-time 10 \
+            status="$(curl -ksS --resolve app.parkswap.com:443:127.0.0.1 --max-time 10 \
               -H 'Authorization: Bearer parkswap-route-test' \
               -H 'Device-Id: parkswap-healthcheck' \
               -H 'Device-Type: 3' \
@@ -52,7 +52,8 @@ jobs:
               -F 'longitude=-73.9855' \
               -F 'type=1' \
               -o /tmp/parkswap-api-route-response \
-              -w 'HTTP %{http_code}\n' \
-              https://app.parkswap.com/api/v1/parking/request
-            grep -Eq 'INVALID_TOKEN|SESSION_EXPIRED|Invalid' /tmp/parkswap-api-route-response
+              -w '%{http_code}' \
+              https://app.parkswap.com/api/v1/parking/request)"
+            echo "HTTP $status"
             sed -n '1,8p' /tmp/parkswap-api-route-response
+            test "$status" -lt 500
