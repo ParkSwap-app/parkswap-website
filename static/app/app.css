@@ -56,10 +56,10 @@
 .destination-search{z-index:720}
 
 /* Keep the primary experience usable while map tiles reconnect. */
-.map-wrap{background-color:#e8ecef;background-image:radial-gradient(circle at 72% 20%,rgba(255,191,0,.16),transparent 28%),linear-gradient(31deg,transparent 48%,rgba(40,47,55,.055) 49%,rgba(40,47,55,.055) 51%,transparent 52%),linear-gradient(121deg,transparent 46%,rgba(40,47,55,.045) 47%,rgba(40,47,55,.045) 49%,transparent 50%);background-size:auto,84px 84px,116px 116px}
+.map-wrap{background-color:#07080a;background-image:radial-gradient(circle at 72% 20%,rgba(255,191,0,.13),transparent 28%),linear-gradient(31deg,transparent 48%,rgba(255,255,255,.025) 49%,rgba(255,255,255,.025) 51%,transparent 52%),linear-gradient(121deg,transparent 46%,rgba(255,255,255,.018) 47%,rgba(255,255,255,.018) 49%,transparent 50%);background-size:auto,84px 84px,116px 116px}
 .map-wrap #map{min-width:100%;min-height:100%;background:transparent}
-.map-wrap.map-fallback-active #map{filter:saturate(.96) contrast(1.02)}
-.leaflet-container{font-family:Manrope,Arial,sans-serif}.leaflet-tile{image-rendering:auto}
+.map-wrap.map-fallback-active #map{filter:saturate(.96) contrast(1.06)}
+.leaflet-container,.leaflet-pane,.leaflet-tile-pane{background:#07080a!important}.leaflet-container{font-family:Manrope,Arial,sans-serif}.leaflet-tile{image-rendering:auto}
 
 /* The official Google control remains full-width and never clips its label. */
 .provider-button-slot{min-width:0;background:#fff;border-color:#d9dce1}

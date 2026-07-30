@@ -1,7 +1,7 @@
 (() => {
-  // The product and its API share app.parkswap.com. Keeping these requests
-  // same-origin prevents browsers from blocking identity and parking actions.
-  const API = "/api";
+  // Prefer the same-origin route, then recover through ParkSwap's canonical
+  // production API when the app host proxy is temporarily unavailable.
+  const API_ORIGINS = ["/api", "https://parkswap.com/api"];
   const state = {
     token: localStorage.getItem("parkswap_token") || "",
     user: safeParse(localStorage.getItem("parkswap_user")) || null,
@@ -68,36 +68,45 @@
     return value;
   }
   async function api(path, { method = "GET", data = null, auth = true, extraHeaders = null } = {}) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 9000);
-    const options = { method, headers: { ...headers(auth), ...(extraHeaders || {}) }, cache: "no-store", signal: controller.signal };
-    if (data) {
-      const body = new FormData();
-      Object.entries(data).forEach(([key, value]) => body.append(key, value == null ? "" : String(value)));
-      options.body = body;
+    let transportError = null;
+    for (const origin of API_ORIGINS) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 9000);
+      const options = { method, headers: { ...headers(auth), ...(extraHeaders || {}) }, cache: "no-store", signal: controller.signal };
+      if (data) {
+        const body = new FormData();
+        Object.entries(data).forEach(([key, value]) => body.append(key, value == null ? "" : String(value)));
+        options.body = body;
+      }
+      let response;
+      try { response = await fetch(`${origin}${path}`, options); }
+      catch (error) {
+        clearTimeout(timeout);
+        transportError = new Error(error?.name === "AbortError"
+          ? "ParkSwap's live service took too long to respond. Please try again."
+          : "ParkSwap could not reach the service. Check your connection and try again.");
+        continue;
+      }
+      let payload;
+      try {
+        const text = (await response.text()).replace(/^\uFEFF/, "").trim();
+        payload = text ? JSON.parse(text) : {};
+      } catch {
+        clearTimeout(timeout);
+        transportError = new Error(response.ok
+          ? "ParkSwap's live service returned an invalid response. Please try again."
+          : "ParkSwap's live service is reconnecting. Please try again in a moment.");
+        continue;
+      }
+      clearTimeout(timeout);
+      const status = Number(payload.status_code || response.status);
+      if (!response.ok || (status && status >= 400)) {
+        if (payload.error_type === "INVALID_TOKEN" || payload.error_type === "SESSION_EXPIRED") signOut(false);
+        throw new Error(typeof payload.message === "string" ? payload.message : "ParkSwap could not complete that action.");
+      }
+      return payload;
     }
-    let response;
-    try { response = await fetch(`${API}${path}`, options); }
-    catch (error) {
-      if (error?.name === "AbortError") throw new Error("ParkSwap's live service took too long to respond. Please try again.");
-      throw new Error("ParkSwap could not reach the service. Check your connection and try again.");
-    }
-    let payload;
-    try {
-      const text = (await response.text()).replace(/^\uFEFF/, "").trim();
-      payload = text ? JSON.parse(text) : {};
-    } catch (error) {
-      if (error?.name === "AbortError") throw new Error("ParkSwap's live service took too long to respond. Please try again.");
-      throw new Error(response.ok
-        ? "ParkSwap's live service returned an invalid response. Please try again."
-        : "ParkSwap's live service is reconnecting. Please try again in a moment.");
-    } finally { clearTimeout(timeout); }
-    const status = Number(payload.status_code || response.status);
-    if (!response.ok || (status && status >= 400)) {
-      if (payload.error_type === "INVALID_TOKEN" || payload.error_type === "SESSION_EXPIRED") signOut(false);
-      throw new Error(typeof payload.message === "string" ? payload.message : "ParkSwap could not complete that action.");
-    }
-    return payload;
+    throw transportError || new Error("ParkSwap could not reach the live service. Please try again.");
   }
   function setBusy(button, busy, label) {
     if (!button) return;
@@ -407,12 +416,13 @@
     renderSpots();
     let primaryTileLoads = 0;
     let fallbackTileLoads = 0;
-    const fallbackTiles = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
+    const fallbackTiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png", {
+      maxZoom: 20,
+      subdomains: "abcd",
       crossOrigin: true,
-      attribution: "© OpenStreetMap contributors",
+      attribution: "© OpenStreetMap © CARTO",
     });
-    const primaryTiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+    const primaryTiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
       maxZoom: 20,
       subdomains: "abcd",
       crossOrigin: true,
