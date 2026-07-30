@@ -15,13 +15,24 @@ jobs:
           password: ${{ secrets.PARKSWAP_SSH_PASSWORD }}
           script: |
             set -eu
-            headers='-H Device-Id:parkswap-healthcheck -H Device-Type:3 -H Timezone:America/New_York -H Language:en -H Accept:application/json'
             for host in app.parkswap.com parkswap.com; do
               echo "=== $host social config ==="
-              sh -c "curl -sS --max-time 10 -D - -o /tmp/parkswap-health-body $headers -H Host:$host http://127.0.0.1/api/v1/auth/social-config" | sed -n '1,20p'
+              curl -ksS --resolve "$host:443:127.0.0.1" --max-time 10 -D - -o /tmp/parkswap-health-body \
+                -H 'Device-Id: parkswap-healthcheck' \
+                -H 'Device-Type: 3' \
+                -H 'Timezone: America/New_York' \
+                -H 'Language: en' \
+                -H 'Accept: application/json' \
+                "https://$host/api/v1/auth/social-config" | sed -n '1,20p'
               sed -n '1,12p' /tmp/parkswap-health-body
               echo "=== $host parking request route ==="
-              sh -c "curl -sS --max-time 10 -D - -o /tmp/parkswap-health-body $headers -H Host:$host -X POST http://127.0.0.1/api/v1/parking/request" | sed -n '1,20p'
+              curl -ksS --resolve "$host:443:127.0.0.1" --max-time 10 -D - -o /tmp/parkswap-health-body \
+                -H 'Device-Id: parkswap-healthcheck' \
+                -H 'Device-Type: 3' \
+                -H 'Timezone: America/New_York' \
+                -H 'Language: en' \
+                -H 'Accept: application/json' \
+                -X POST "https://$host/api/v1/parking/request" | sed -n '1,20p'
               sed -n '1,12p' /tmp/parkswap-health-body
             done
             echo '=== active nginx routing ==='
