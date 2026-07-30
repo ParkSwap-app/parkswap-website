@@ -326,6 +326,7 @@
   });
 
   initializeSocialIdentity();
+  initializeMap();
 
   async function enterApp() {
     authView.classList.add("hidden"); mainView.classList.remove("hidden");
@@ -385,12 +386,14 @@
     }
     if (!window.L) {
       state.mapStarting = false;
+      document.documentElement.dataset.parkswapMap = "unavailable";
       $("locationStatus").textContent = "Map is reconnecting — address search remains available";
       return;
     }
     await new Promise((resolve) => requestAnimationFrame(resolve));
     state.map = L.map("map", { zoomControl: false, attributionControl: true }).setView([40.7128, -74.006], 13);
     state.mapStarting = false;
+    document.documentElement.dataset.parkswapMap = "ready";
     let primaryTileLoads = 0;
     let fallbackTileLoads = 0;
     const fallbackTiles = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
