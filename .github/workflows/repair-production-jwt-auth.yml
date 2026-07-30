@@ -66,5 +66,10 @@ jobs:
               -w '%{http_code}' \
               https://app.parkswap.com/api/v1/parking/request)"
             echo "HTTP $status"
-            sed -n '1,8p' /tmp/parkswap-auth-response
+            sed -n '1,80p' /tmp/parkswap-auth-response
+            echo '=== recent PHP and application errors ==='
+            printf '%s\n' "$SUDO_PASSWORD" | sudo -S sh -c '
+              tail -n 160 /var/log/nginx/error.log /var/log/php*-fpm.log 2>/dev/null || true
+              find /var/www/html/backend-api/application/logs -type f -name "log-*.php" -print0 2>/dev/null | xargs -0 -r tail -n 120 || true
+            ' | tail -220
             test "$status" -lt 500
