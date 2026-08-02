@@ -1,7 +1,8 @@
 (() => {
-  // Prefer the same-origin route, then recover through ParkSwap's canonical
-  // production API when the app host proxy is temporarily unavailable.
-  const API_ORIGINS = ["/api", "https://parkswap.com/api"];
+  // Keep authenticated requests on the current ParkSwap app origin. The
+  // public parkswap.com site does not serve the API and must never be used as
+  // a JSON fallback because its 404 page is HTML.
+  const API_ORIGINS = ["/api"];
   const state = {
     token: localStorage.getItem("parkswap_token") || "",
     user: safeParse(localStorage.getItem("parkswap_user")) || null,
@@ -239,7 +240,9 @@
       }
       if (state.socialConfig.apple?.enabled && state.socialConfig.apple.client_id) {
         await loadScript("https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js", "apple-signin-sdk");
-        $("appleIdentityButton").dataset.socialReady = "true";
+        const appleButton = $("appleIdentityButton");
+        appleButton.dataset.socialReady = "true";
+        appleButton.classList.remove("hidden");
       }
     } catch {
       $("googleIdentityButton").classList.add("hidden");
