@@ -54,8 +54,9 @@ jobs:
               printf '%s\n' "$SUDO_PASSWORD" | sudo -S mkdir -p "/var/backups/parkswap-web/$stamp"
               printf '%s\n' "$SUDO_PASSWORD" | sudo -S cp -a "$target" "/var/backups/parkswap-web/$stamp/$(printf '%s' "$target" | tr '/' '_')"
               printf '%s\n' "$SUDO_PASSWORD" | sudo -S cp -a /tmp/parkswap-web-release/. "$target/"
-              grep -Fq '20260729-live-actions-dark-map-10' "$target/index.html"
-              grep -Fq 'https://parkswap.com/api' "$target/app.js"
+              grep -Fq '20260804-driver-readiness-1' "$target/index.html"
+              grep -Fq 'const API_ORIGINS = ["/api"]' "$target/app.js"
+              grep -Fq 'hasCompleteVehicle' "$target/app.js"
               echo "Activated ParkSwap web release in $target"
             done
             printf '%s\n' "$SUDO_PASSWORD" | sudo -S nginx -t
