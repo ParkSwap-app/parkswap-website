@@ -23,7 +23,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
-  <link rel="stylesheet" href="app.css?v=20260729-live-actions-dark-map-10">
+  <link rel="stylesheet" href="app.css?v=20260804-driver-readiness-1">
   <title>ParkSwap</title>
 </head>
 <body>
@@ -54,6 +54,8 @@
               <label><input type="radio" name="account_role" value="spotter"><span><b>Join as a Spotter</b><small>Report open spots. No vehicle required.</small></span></label>
             </div>
           </fieldset>
+          <label>Full name<input name="full_name" autocomplete="name" required maxlength="80" placeholder="Your full name"></label>
+          <label>Age<input name="age" type="number" inputmode="numeric" min="18" max="100" required placeholder="18+"></label>
           <label>Email<input name="email" type="email" autocomplete="email" required placeholder="you@example.com"></label>
           <label>Password<input name="password" type="password" autocomplete="new-password" minlength="6" required placeholder="At least 6 characters"></label>
           <label>Confirm password<input name="confirm_password" type="password" autocomplete="new-password" minlength="6" required placeholder="Repeat password"></label>
@@ -176,6 +178,8 @@
       <button class="modal-close" data-close-modal aria-label="Close">×</button>
       <p class="eyebrow">Vehicle details</p><h2 id="vehicleTitle">Help drivers recognize you.</h2>
       <form id="vehicleForm" class="auth-form two-column">
+        <label>Full name<input name="profile_full_name" autocomplete="name" required maxlength="80" placeholder="Your full name"></label>
+        <label>Age<input name="profile_age" type="number" inputmode="numeric" min="18" max="100" required placeholder="18+"></label>
         <label>Make<input name="make" required placeholder="Honda"></label>
         <label>Model<input name="model" required placeholder="Civic"></label>
         <label>Color<input name="color" required placeholder="Black"></label>
@@ -247,6 +251,6 @@
 
   <div id="toast" class="toast hidden" role="status"></div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
-  <script src="app.js?v=20260729-live-actions-dark-map-10" defer></script>
+  <script src="app.js?v=20260804-driver-readiness-1" defer></script>
 </body>
 </html>
