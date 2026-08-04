@@ -126,10 +126,42 @@
   function saveSession(payload) {
     const user = payload?.data?.user_details || payload?.data?.user || payload?.user_details;
     if (!user?.auth_token) throw new Error("ParkSwap signed in but did not return a session. Please try again.");
-    state.token = user.auth_token; state.user = user; state.vehicle = user.carinfo || null;
+    state.token = user.auth_token; state.user = user; state.vehicle = hasCompleteVehicle(user.carinfo) ? user.carinfo : null;
     localStorage.setItem("parkswap_token", state.token);
     localStorage.setItem("parkswap_user", JSON.stringify(user));
     if (state.vehicle) localStorage.setItem("parkswap_vehicle", JSON.stringify(state.vehicle));
+    else localStorage.removeItem("parkswap_vehicle");
+  }
+  function hasCompleteVehicle(vehicle) {
+    return Boolean(vehicle && ["make", "model", "color", "plate_number"].every((key) => String(vehicle[key] || "").trim()));
+  }
+  function mergeUserDetails(payload) {
+    const user = payload?.data?.user_details || payload?.data?.user || payload?.user_details;
+    if (!user) return state.user;
+    state.user = { ...(state.user || {}), ...user, auth_token: state.token };
+    state.vehicle = hasCompleteVehicle(user.carinfo) ? user.carinfo : null;
+    localStorage.setItem("parkswap_user", JSON.stringify(state.user));
+    if (state.vehicle) localStorage.setItem("parkswap_vehicle", JSON.stringify(state.vehicle));
+    else localStorage.removeItem("parkswap_vehicle");
+    return state.user;
+  }
+  async function refreshCurrentUser() {
+    const payload = await api("/v1/user/user-profile");
+    mergeUserDetails(payload);
+    renderVehicle();
+    return state.user;
+  }
+  async function completeProfile(fullName, age) {
+    const data = { full_name: String(fullName || "").trim(), age: String(age || "").trim() };
+    if (!data.full_name || !data.age) throw new Error("Add your full name and age to finish your driver profile.");
+    const step = Number(state.user?.onboarding_step || 0);
+    const currentName = String(state.user?.full_name || "").trim();
+    const currentAge = String(state.user?.age || "").trim();
+    if (step > 2 && currentName === data.full_name && currentAge === data.age) return null;
+    const path = step > 2 ? "/v1/user/update-profile" : "/v1/auth/complete-profile";
+    const payload = await api(path, { method: "POST", data });
+    mergeUserDetails(payload);
+    return payload;
   }
   function setAccountRole(role) {
     state.accountRole = role === "spotter" ? "spotter" : "driver";
@@ -269,12 +301,19 @@
     event.preventDefault(); const button = event.currentTarget.querySelector("button"); setBusy(button, true, "Creating account…"); message(authMessage, "");
     const data = Object.fromEntries(new FormData(event.currentTarget));
     if (data.password !== data.confirm_password) { message(authMessage, "Passwords do not match."); setBusy(button, false); return; }
+    const profile = { full_name: data.full_name, age: data.age };
+    const accountRole = data.account_role;
+    delete data.full_name; delete data.age; delete data.account_role;
     data.device_token = `web-${deviceId()}`;
     try {
-      setAccountRole(data.account_role);
+      setAccountRole(accountRole);
       saveSession(await api("/v1/auth/signup", { method: "POST", data, auth: false }));
+      let profileError = null;
+      try { await completeProfile(profile.full_name, profile.age); }
+      catch (error) { profileError = error; }
       await enterApp();
-      if (state.accountRole === "driver") openVehicleModal();
+      if (state.accountRole === "driver") openVehicleModal(profileError?.message || "Add your vehicle to finish driver setup.");
+      else if (profileError) toast(profileError.message);
       else toast("Spotter profile ready. No vehicle required.");
     }
     catch (error) { message(authMessage, error.message); }
@@ -759,6 +798,10 @@
     if (!actionCoords) { state.pendingAction = type === 1 ? "look" : "leave"; openLocationModal(type === 1 ? "Allow location, choose a point on the map, or search any U.S. address above." : "Your current location is required to share a parking departure."); return; }
     const button = type === 1 ? $("lookButton") : $("leaveButton"); setBusy(button, true, type === 1 ? "Starting search…" : "Sharing spot…");
     try {
+      if (type === 2 && !hasCompleteVehicle(state.vehicle || state.user?.carinfo)) {
+        openVehicleModal("Finish your profile and vehicle details once, then you can share your spot.");
+        return;
+      }
       if (type === 1 && state.exploreCoords) {
         state.mode = 1;
         state.searchOnlyMode = true;
@@ -772,7 +815,15 @@
         await api(`/v1/parking-network/scheduled-departures/${encodeURIComponent(state.activeScheduled.id)}/confirm`, { method: "POST" });
         state.activeScheduled = null; localStorage.removeItem("parkswap_scheduled_departure");
       } else {
-        await api("/v1/parking/request", { method: "POST", data: { location: "Current location", latitude: state.coords.latitude, longitude: state.coords.longitude, type } });
+        const requestData = { location: "Current location", latitude: state.coords.latitude, longitude: state.coords.longitude, type };
+        try {
+          await api("/v1/parking/request", { method: "POST", data: requestData });
+        } catch (error) {
+          if (!/car|vehicle|profile|complete/i.test(error.message)) throw error;
+          await refreshCurrentUser();
+          if (!hasCompleteVehicle(state.vehicle)) throw error;
+          await api("/v1/parking/request", { method: "POST", data: requestData });
+        }
       }
       state.searchOnlyMode = false;
       state.mode = type; localStorage.setItem("parkswap_mode", String(type)); renderMode(); await loadSpots(false);
@@ -899,21 +950,45 @@
     const status = $("activeMode"); status.classList.remove("hidden"); status.textContent = "Handoff connected. ParkSwap will keep refreshing the spot status while you approach.";
   }
 
-  function openVehicleModal() { message($("vehicleMessage"), ""); vehicleModal.classList.remove("hidden"); }
+  function openVehicleModal(instruction = "") {
+    if (typeof instruction !== "string") instruction = "";
+    const form = $("vehicleForm");
+    const vehicle = state.vehicle || state.user?.carinfo || {};
+    form.elements.profile_full_name.value = state.user?.full_name || "";
+    form.elements.profile_age.value = state.user?.age || "";
+    ["make", "model", "color", "plate_number"].forEach((key) => { form.elements[key].value = vehicle[key] || ""; });
+    message($("vehicleMessage"), instruction);
+    vehicleModal.classList.remove("hidden");
+  }
   function renderVehicle() {
     $("vehicleCard").classList.toggle("hidden", state.accountRole === "spotter");
     if (state.accountRole === "spotter") return;
     const vehicle = state.vehicle || state.user?.carinfo;
-    $("vehicleSummary").textContent = vehicle ? [field(vehicle, "color"), field(vehicle, "make"), field(vehicle, "model"), field(vehicle, "plate_number")].filter(Boolean).join(" · ") : "Add your vehicle so another driver can recognize you during a handoff.";
+    $("vehicleSummary").textContent = hasCompleteVehicle(vehicle) ? [field(vehicle, "color"), field(vehicle, "make"), field(vehicle, "model"), field(vehicle, "plate_number")].filter(Boolean).join(" · ") : "Finish your profile and vehicle details before sharing a spot.";
   }
   $("vehicleForm").addEventListener("submit", async (event) => {
     event.preventDefault(); const button = event.currentTarget.querySelector("button"); setBusy(button, true, "Saving…"); message($("vehicleMessage"), "");
     const data = Object.fromEntries(new FormData(event.currentTarget));
     try {
-      const payload = await api("/v1/auth/car-details", { method: "POST", data });
-      state.vehicle = payload?.data?.user_details?.carinfo || data; localStorage.setItem("parkswap_vehicle", JSON.stringify(state.vehicle));
-      try { await api("/v1/auth/complete-onboarding", { method: "PATCH" }); } catch {}
-      renderVehicle(); message($("vehicleMessage"), "Vehicle saved.", true); setTimeout(() => vehicleModal.classList.add("hidden"), 500);
+      await completeProfile(data.profile_full_name, data.profile_age);
+      const vehicleData = { make: data.make, model: data.model, color: data.color, plate_number: data.plate_number };
+      const carId = field(state.vehicle || state.user?.carinfo || {}, "carInfoID", "car_info_id", "id");
+      if (carId) {
+        await api(`/v1/user/car-details/${encodeURIComponent(carId)}`, { method: "PUT", data: vehicleData });
+      } else {
+        try {
+          await api("/v1/auth/car-details", { method: "POST", data: vehicleData });
+        } catch (error) {
+          if (!/previous|already|exist|complete/i.test(error.message)) throw error;
+          await api("/v1/user/car-details", { method: "PUT", data: vehicleData });
+        }
+      }
+      try { await api("/v1/auth/complete-onboarding", { method: "PATCH" }); } catch (error) {
+        if (!/previous|already|complete/i.test(error.message)) throw error;
+      }
+      await refreshCurrentUser();
+      if (!hasCompleteVehicle(state.vehicle)) throw new Error("Your vehicle did not finish saving. Please try once more.");
+      renderVehicle(); message($("vehicleMessage"), "Profile and vehicle confirmed. You can share your spot now.", true); setTimeout(() => vehicleModal.classList.add("hidden"), 650);
     } catch (error) { message($("vehicleMessage"), error.message); }
     finally { setBusy(button, false); }
   });
